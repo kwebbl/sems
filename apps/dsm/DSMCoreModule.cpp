@@ -50,6 +50,8 @@ DSMAction* DSMCoreModule::getAction(const string& from_str) {
   DEF_CMD("callFSM", SCCallFSMAction);
   DEF_CMD("returnFSM", SCReturnFSMAction);
 
+  DEF_CMD("break", SCBreakAction);
+
   DEF_CMD("throw", SCThrowAction);
   DEF_CMD("throwOnError", SCThrowOnErrorAction);
 
@@ -136,6 +138,12 @@ DSMAction* DSMCoreModule::getAction(const string& from_str) {
     return a;
   }  
 
+  if (cmd == "DIgetResultArray") {
+    SCDIAction * a = new SCDIAction(params, true);
+    a->name = from_str;
+    return a;
+  }  
+
   DEF_CMD("B2B.connectCallee", SCB2BConnectCalleeAction);
   DEF_CMD("B2B.terminateOtherLeg", SCB2BTerminateOtherLegAction);
   DEF_CMD("B2B.sendReinvite", SCB2BReinviteAction);
@@ -145,6 +153,7 @@ DSMAction* DSMCoreModule::getAction(const string& from_str) {
   DEF_CMD("B2B.clearHeaders", SCB2BClearHeadersAction);
   DEF_CMD("B2B.setHeaders", SCB2BSetHeadersAction);
   DEF_CMD("B2B.relayEvent", SCRelayB2BEventAction);
+  DEF_CMD("B2B.setRelayOnly", SCB2BSetRelayOnlyAction);
 
   DEF_CMD("trackObject", SCTrackObjectAction);
   DEF_CMD("releaseObject", SCReleaseObjectAction);
@@ -346,6 +355,16 @@ EXEC_ACTION_START(SCRelayB2BEventAction) {
 
   b2b_sess->relayEvent(ev);
 
+} EXEC_ACTION_END;
+
+EXEC_ACTION_START(SCB2BSetRelayOnlyAction) {
+  AmB2BSession* b2b_sess = dynamic_cast<AmB2BSession*>(sess);
+  if (NULL == b2b_sess) {
+    throw DSMException("script", "cause", "B2B.setRelayOnly used without B2B call");
+  }
+  string true_or_false = resolveVars(arg, sess, sc_sess, event_params);
+  DBG("setting sip_relay_only to '%s'\n", true_or_false.c_str());
+  b2b_sess->set_sip_relay_only(true_or_false == "true");
 } EXEC_ACTION_END;
 
 CONST_ACTION_2P(SCPlayFileAction, ',', true);
@@ -580,6 +599,15 @@ DSMAction::SEAction SCJumpFSMAction::getSEAction(string& param,
 						 map<string,string>* event_params) {
   param = resolveVars(arg, sess, sc_sess, event_params);
   return Jump; 
+}
+
+DEF_SCModActionExec(SCBreakAction);
+DSMAction::SEAction SCBreakAction::getSEAction(string& param,
+						 AmSession* sess, DSMSession* sc_sess,
+						 DSMCondition::EventType event,
+						 map<string,string>* event_params) {
+  param = resolveVars(arg, sess, sc_sess, event_params);
+  return Break; 
 }
 
 DEF_SCModActionExec(SCCallFSMAction);
@@ -1434,30 +1462,48 @@ EXEC_ACTION_START(SCDIAction) {
     else if (isArgInt(sc_sess->di_res)) 
       sc_sess->var["DI_res"] = int2str(sc_sess->di_res.asInt());
     else if (isArgArray(sc_sess->di_res)) {
-      // copy results to $DI_res0..$DI_resn
-      for (size_t i=0;i<sc_sess->di_res.size();i++) {
-	switch (sc_sess->di_res.get(i).getType()) {
-	case AmArg::CStr: {
-	  sc_sess->var["DI_res"+int2str((unsigned int)i)] =
-	    sc_sess->di_res.get(i).asCStr();
-	} break;
-	case AmArg::Int: {
-	  sc_sess->var["DI_res"+int2str((unsigned int)i)] =
-	    int2str(sc_sess->di_res.get(i).asInt());
-	} break;
-	default: {
-	  ERROR("unsupported AmArg return type!");
-	  flag_error = true;
-	  sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
-	  sc_sess->SET_STRERROR("unsupported AmArg return type");
+      if (name.compare(0, 12, "DIgetResult(") == 0) {
+	// copy results to $DI_res0..$DI_resn
+	for (size_t i=0;i<sc_sess->di_res.size();i++) {
+	  switch (sc_sess->di_res.get(i).getType()) {
+	  case AmArg::CStr: {
+	    sc_sess->var["DI_res"+int2str((unsigned int)i)] =
+	      sc_sess->di_res.get(i).asCStr();
+	  } break;
+	  case AmArg::Int: {
+	    sc_sess->var["DI_res"+int2str((unsigned int)i)] =
+	      int2str(sc_sess->di_res.get(i).asInt());
+	  } break;
+	  default: {
+	    ERROR("unsupported AmArg return type!");
+	    flag_error = true;
+	    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+	    sc_sess->SET_STRERROR("unsupported AmArg return type");
+	  }
+	  }
 	}
+      } else {
+	// copy results to $DI_res[0]..$DI_res[n] and n to $DI_res_size
+	for (size_t i=0;i<sc_sess->di_res.size();i++) {
+	  switch (sc_sess->di_res.get(i).getType()) {
+	  case AmArg::CStr: {
+	    sc_sess->var["DI_res["+int2str((unsigned int)i)+"]"] =
+	      sc_sess->di_res.get(i).asCStr();
+	  } break;
+	  case AmArg::Int: {
+	    sc_sess->var["DI_res["+int2str((unsigned int)i)+"]"] =
+	      int2str(sc_sess->di_res.get(i).asInt());
+	  } break;
+	  default: {
+	    ERROR("unsupported AmArg return type!");
+	    flag_error = true;
+	    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+	    sc_sess->SET_STRERROR("unsupported AmArg return type");
+	  }
+	  }
 	}
+	sc_sess->var["DI_res_size"] = int2str((int)sc_sess->di_res.size());
       }
-    } else {
-      ERROR("unsupported AmArg return type!");
-      flag_error = true;
-      sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
-      sc_sess->SET_STRERROR("unsupported AmArg return type");
     }
   }
   if (!flag_error) {

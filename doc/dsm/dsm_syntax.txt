@@ -4,10 +4,13 @@ DSM quick reference
 Syntax
 ======
 -- comment
-# also comment
+# comment, too
 
 #include "script.dsm"
+#include "script_dir"
 #include "/path/to/anotherscript.dsm"
+#include "/path/to/script_dir"
+
 import(mod_name);
 
 [initial] state name 
@@ -39,6 +42,12 @@ function func_name() {
   } else {
    <actions>
   }
+
+  for ($var in range(start, end)) { action; ... }
+    -- $var gets values from start to end - 1
+  for ($var in $myarray) { action; ... }
+  for ($key,$val in $mystruct) { action; ... }
+  break();
 
   func_name();
   ...
@@ -79,6 +88,8 @@ DSM flow
  stop(<send bye>)
    e.g. stop(false), stop(true)
 
+ break;    # break execution of current action list and for loop
+
  -- reprocess the current event after transition:
  repost()
 
@@ -94,6 +105,14 @@ DSM flow
         sets($var="a single at on a date with a single dollar: @@$$")
  var($dstvar=srcvarname)
   e.g.  var($dstvar=$var_counter)
+        # array member set and access
+        set($i = 0);
+        sets($v="a[$i]");
+        # set array member to $value
+        setVar($v=$value)
+        # assign array member value to $var
+        var($var=$v);
+
  param($dstvar=srcparamname)
   e.g. param($dstvar=$myparam) (like: #($myparam) )
  eval($var=value) 
@@ -250,6 +269,10 @@ B2B call control
  B2B.relayEvent("var")
    relay B2Bevent to related B2B session with all variables of current DSM session
 
+ B2B.setRelayOnly(true|false)
+   sets or resets relayed INVITE mode; useful before B2B.sendReinvite() when
+   initial INVITE was relayed
+
  Logging
  -------
 
@@ -303,6 +326,14 @@ B2B call control
 
   DIgetResult(factory, function, param,...)
     saves result from DI call to DI_res or DI_res0, DI_res1, ...
+    currently result types int, double, string, boolean, invalid. and
+    array are supported
+   * sets $errno (arg,config)
+
+  DIgetResultArray(factory, function, param,...)
+    saves result from DI call to DI_res or DI_res[0], DI_res[1], ..., DI_res[N]
+    and N+1 or 0 to DI_res_size; currently result types int, double, string,
+    boolean, invalid, and  array are supported
    * sets $errno (arg,config)
 
   Exception handling
@@ -475,6 +506,18 @@ B2Bevent(expr)
    BYE on other leg received
     #hdrs    - headers
 
+    set(#processed=true) to handle the BYE in DSM, and e.g. continue the call
+  example:
+    transition "BYE on other leg" conn - B2B.otherBye() / {
+      log(2, "received BYE from callee");
+      set(#processed=true);
+      dlg.relayReply(200, "OK");   -- use only in relayed INVITE mode
+      B2B.setRelayOnly(false);     -- only needed in relayed INVITE mode
+      B2B.sendReinvite(true);
+      connectMedia();
+      playFile("thanks.wav");
+    } -> thanks_for_calling;
+
  sipRequest
    SIP request received - only executed if enable_request_events=="true"
    parameters:
@@ -490,8 +533,8 @@ B2Bevent(expr)
  sipReply
    SIP reply received - only executed if enable_reply_events=="true"
    parameters:
-    #code          - response code
-    #reason        - reason string
+    #sip_code      - response code
+    #sip_reason    - reason string
     #hdrs          - Headers (apart from dialog-IDs)
     #content_type  - Content-Type
     #body          - body of message

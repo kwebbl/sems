@@ -389,6 +389,7 @@ bool SBCCallProfile::readFromConfiguration(const string& name,
   contact.hiding_prefix = cfg.getParameter("contact_hiding_prefix");
   contact.hiding_vars = cfg.getParameter("contact_hiding_vars");
 
+  if (!bleg_contact.readConfig(cfg)) return false;
   if (!codec_prefs.readConfig(cfg)) return false;
   if (!transcoder.readConfig(cfg)) return false;
   hold_settings.readConfig(cfg);
@@ -582,6 +583,7 @@ bool SBCCallProfile::readFromConfiguration(const string& name,
 
   codec_prefs.infoPrint();
   transcoder.infoPrint();
+  bleg_contact.infoPrint();
 
   return true;
 }
@@ -782,11 +784,11 @@ bool SBCCallProfile::evaluate(ParamReplacerCtx& ctx,
   REPLACE_NONEMPTY_STR(callid);
 
   REPLACE_NONEMPTY_STR(dlg_contact_params);
-  REPLACE_NONEMPTY_STR(bleg_dlg_contact_params);
 
   REPLACE_NONEMPTY_STR(outbound_proxy);
   REPLACE_NONEMPTY_STR(next_hop);
 
+  if (!bleg_contact.evaluate(ctx,req)) return false;
   if (!transcoder.evaluate(ctx,req)) return false;
 
   REPLACE_BOOL(rtprelay_enabled, rtprelay_enabled_value);
@@ -1347,7 +1349,7 @@ static bool readPayload(SdpPayload &p, const string &src)
 
   if (elems.size() < 1) return false;
 
-  if (elems.size() > 2) str2int(elems[1], p.encoding_param);
+  if (elems.size() > 2) str2int(elems[2], p.encoding_param);
   if (elems.size() > 1) str2int(elems[1], p.clock_rate);
   else p.clock_rate = 8000; // default value
   p.encoding_name = elems[0];
@@ -1391,8 +1393,9 @@ static bool read(const std::string &src, vector<SdpPayload> &codecs)
     if(!payload) {
       ERROR("Ignoring unknown payload found in call profile: '%s/%i'\n",
 	    p.encoding_name.c_str(), p.clock_rate);
-    }
-    else {
+    } else {
+      p.sdp_format_parameters = plugin->getSdpFormatParameters(payload->codec_id, true, "");
+
       if(payload_id < DYNAMIC_PAYLOAD_TYPE_START)
 	p.payload_type = payload->payload_id;
       else
@@ -1776,4 +1779,43 @@ bool SBCCallProfile::HoldSettings::evaluate(ParamReplacerCtx& ctx, const AmSipRe
   if (!bleg.activity_str.empty() && !bleg.setActivity(bleg.activity_str)) return false;
 
   return true;
+}
+
+bool SBCCallProfile::BLegContact::readConfig(AmConfigReader &cfg)
+{
+  uri_host = cfg.getParameter("bleg_contact_host");
+  uri_port = cfg.getParameter("bleg_contact_port");
+  uri_user = cfg.getParameter("bleg_contact_user");
+  uri_param = cfg.getParameter("bleg_contact_uri_params");
+  display_name = cfg.getParameter("bleg_contact_displayname");
+
+  int pos = 0;
+  string params = cfg.getParameter("bleg_contact_params");
+  if(params.empty()) return true;
+  if(!parse_params(params,pos)) {
+    ERROR("bleg_contact_params parsing failed");
+    return false;
+  }
+  return true;
+}
+
+bool SBCCallProfile::BLegContact::evaluate(ParamReplacerCtx& ctx, const AmSipRequest& req)
+{
+  REPLACE_NONEMPTY_STR(uri_host);
+  REPLACE_NONEMPTY_STR(uri_port);
+  REPLACE_NONEMPTY_STR(uri_user);
+  REPLACE_NONEMPTY_STR(uri_param);
+  REPLACE_NONEMPTY_STR(display_name);
+
+  for(map<string, string>::iterator it = params.begin();
+      it!=params.end();++it)
+  {
+    REPLACE_NONEMPTY_STR(it->second);
+  }
+  return true;
+}
+
+void SBCCallProfile::BLegContact::infoPrint() const
+{
+  INFO("SBC:      B leg contact: %s\n", print().c_str());
 }

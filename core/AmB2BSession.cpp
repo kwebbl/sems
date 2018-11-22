@@ -76,7 +76,7 @@ AmB2BSession::AmB2BSession(const string& other_local_tag, AmSipDialog* p_dlg,
     enable_dtmf_rtp_filtering(false),
     enable_dtmf_rtp_detection(false),
     rtp_relay_transparent_seqno(true), rtp_relay_transparent_ssrc(true),
-    est_invite_cseq(0),est_invite_other_cseq(0),
+    est_invite_cseq(0), est_invite_other_cseq(0), est_invite_max_forwards(0),
     media_session(NULL)
 {
   if(!subs) subs = new AmSipSubscription(dlg,this);
@@ -192,7 +192,7 @@ void AmB2BSession::onB2BEvent(B2BEvent* ev)
 	  relayError(req_ev->req.method,req_ev->req.cseq,
 		     true,483,SIP_REPLY_TOO_MANY_HOPS);
 	  return;
-	}
+	};
 
 	if (req_ev->req.method == SIP_METH_INVITE &&
 	    dlg->getUACInvTransPending()) {
@@ -211,7 +211,19 @@ void AmB2BSession::onB2BEvent(B2BEvent* ev)
 		     true, 200, "OK");
 	  return;
 	}
+      }
 
+       if( (req_ev->req.method == SIP_METH_BYE)
+	  // CANCEL is handled differently: other side has already 
+	  // sent a terminate event.
+	  //|| (req_ev->req.method == SIP_METH_CANCEL)
+	  ) {
+	
+	 if (onOtherBye(req_ev->req))
+	   req_ev->processed = true; // app should have relayed 200 to BYE
+      }
+
+      if(req_ev->forward && !req_ev->processed){
         int res = relaySip(req_ev->req);
 	if(res < 0) {
 	  // reply relayed request internally
@@ -220,14 +232,6 @@ void AmB2BSession::onB2BEvent(B2BEvent* ev)
 	}
       }
       
-      if( (req_ev->req.method == SIP_METH_BYE)
-	  // CANCEL is handled differently: other side has already 
-	  // sent a terminate event.
-	  //|| (req_ev->req.method == SIP_METH_CANCEL)
-	  ) {
-	
-	onOtherBye(req_ev->req);
-      }
     }
     return;
 
@@ -596,10 +600,15 @@ int AmB2BSession::relayEvent(AmEvent* ev)
   return 0;
 }
 
-void AmB2BSession::onOtherBye(const AmSipRequest& req)
+bool AmB2BSession::onOtherBye(const AmSipRequest& req)
 {
   DBG("onOtherBye()\n");
-  terminateLeg();
+
+  // don't call terminateLeg(), as BYE will be sent end-to-end
+  setStopped();
+  clearRtpReceiverRelay();
+
+  return false;
 }
 
 bool AmB2BSession::onOtherReply(const AmSipReply& reply)
@@ -792,8 +801,11 @@ int AmB2BSession::relaySip(const AmSipRequest& req)
       }
     }
 
-    DBG("relaying SIP request %s %s\n", req.method.c_str(), req.r_uri.c_str());
-    int err = dlg->sendRequest(req.method, &body, *hdrs, SIP_FLAGS_VERBATIM);
+    DBG("relaying SIP request %s %s %d\n", req.method.c_str(),
+	req.r_uri.c_str(), req.max_forwards - 1);
+
+    int err = dlg->sendRequest(req.method, &body, *hdrs, SIP_FLAGS_VERBATIM,
+			       req.max_forwards - 1);
     if(err < 0){
       ERROR("dlg->sendRequest() failed\n");
       return err;

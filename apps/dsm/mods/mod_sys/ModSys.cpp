@@ -63,6 +63,10 @@ MOD_CONDITIONEXPORT_BEGIN(MOD_CLS_NAME) {
     return new FileExistsCondition(params, true);
   }
 
+  if (cmd == "sys.system") {
+    return new SystemCondition(params, false);
+  }
+
 } MOD_CONDITIONEXPORT_END;
 
 MATCH_CONDITION_START(FileExistsCondition) {
@@ -77,6 +81,36 @@ MATCH_CONDITION_START(FileExistsCondition) {
     DBG("returning %s\n", (ex)?"true":"false");
     return ex;
   }
+} MATCH_CONDITION_END;
+
+MATCH_CONDITION_START(SystemCondition) {
+  string cmd = resolveVars(arg, sess, sc_sess, event_params);
+  DBG("executing system command '%s'\n", cmd.c_str());
+  if (cmd.length() == 0) {
+    ERROR("system command is empty\n");
+    return false;
+  }
+  int res = system(cmd.c_str());
+  if (res == -1) {
+    ERROR("system could not create child process for '%s'\n", cmd.c_str());
+    return false;
+  }
+  res = WEXITSTATUS(res);
+  DBG("system command returned '%d'\n", res);
+  if (res == 0) {
+    if (inv)
+      return false;
+    else
+      return true;
+  }
+  if (res == 1) {
+    if (inv)
+      return true;
+    else
+      return false;
+  }
+  ERROR("system command '%s' returned value '%d'\n", cmd.c_str(), res);
+  return false;
 } MATCH_CONDITION_END;
 
 bool sys_mkdir(const char* p) {

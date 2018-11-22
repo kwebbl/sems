@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2009 Teltech Systems Inc.
+ * Copyright (C) 2015-2016 Juha Heinanen
  *
  * This file is part of SEMS, a free SIP media server.
  *
@@ -34,6 +35,7 @@
 #include "DSMSession.h"
 #include "AmSession.h"
 #include "AmPlaylist.h"
+#include "jsonArg.h"
 
 SC_EXPORT(MOD_CLS_NAME);
 
@@ -52,8 +54,13 @@ MOD_ACTIONEXPORT_BEGIN(MOD_CLS_NAME) {
   DEF_CMD("utils.srand", SCUSRandomAction);
   DEF_CMD("utils.add", SCUSAddAction);
   DEF_CMD("utils.sub", SCUSSubAction);
+  DEF_CMD("utils.mul", SCUSMulAction);
   DEF_CMD("utils.int", SCUIntAction);
+  DEF_CMD("utils.md5", SCUMD5Action);
+  DEF_CMD("utils.replace", SCUReplaceAction);
   DEF_CMD("utils.splitStringCR", SCUSplitStringAction);
+  DEF_CMD("utils.splitString", SCUGenSplitStringAction);
+  DEF_CMD("utils.decodeJson", SCUDecodeJsonAction);
   DEF_CMD("utils.escapeCRLF", SCUEscapeCRLFAction);
   DEF_CMD("utils.unescapeCRLF", SCUUnescapeCRLFAction);
   DEF_CMD("utils.playRingTone", SCUPlayRingToneAction);
@@ -61,8 +68,12 @@ MOD_ACTIONEXPORT_BEGIN(MOD_CLS_NAME) {
 } MOD_ACTIONEXPORT_END;
 
 MOD_CONDITIONEXPORT_BEGIN(MOD_CLS_NAME) {
+
   if (cmd == "utils.isInList") {
     return new IsInListCondition(params, false);
+  }
+  if (cmd == "utils.startsWith") {
+    return new StartsWithCondition(params, false);
   }
 
 } MOD_CONDITIONEXPORT_END;
@@ -144,6 +155,28 @@ bool utils_play_count(DSMSession* sc_sess, unsigned int cnt,
   }
 
   return false;
+}
+
+void utils_set_session_vars(DSMSession* sc_sess, string prefix, AmArg json) {
+  if (json.getType() == AmArg::Struct) {
+    for (AmArg::ValueStruct::const_iterator it1 = json.begin();
+	 it1 != json.end(); it1++) {
+      utils_set_session_vars(sc_sess, prefix + "." + it1->first, it1->second);
+    }
+  } else if (json.getType() == AmArg::Array) {
+    for (std::vector<AmArg>::size_type i = 0; i != json.size(); i++) {
+      utils_set_session_vars(sc_sess, prefix + "[" + int2str((int)i) + "]",
+			     json[i]);
+    }
+  } else {
+    string json_string = AmArg::print(json);
+    DBG("setting %s = %s\n", prefix.c_str(), json_string.c_str());
+    if (isArgCStr(json) && (json_string.size() > 1)) {
+      json_string.erase(json_string.end() - 1);
+      json_string.erase(json_string.begin());
+    }
+    sc_sess->var[prefix] = json_string.c_str();      
+  }
 }
 
 CONST_ACTION_2P(SCUPlayCountRightAction, ',', true);
@@ -320,7 +353,6 @@ EXEC_ACTION_START(SCUSpellAction) {
 
 } EXEC_ACTION_END;
 
-
 CONST_ACTION_2P(SCUSAddAction, ',', false);
 EXEC_ACTION_START(SCUSAddAction) {
   string n1 = resolveVars(par1, sess, sc_sess, event_params);
@@ -357,6 +389,24 @@ EXEC_ACTION_START(SCUSSubAction) {
 
 } EXEC_ACTION_END;
 
+CONST_ACTION_2P(SCUSMulAction, ',', false);
+EXEC_ACTION_START(SCUSMulAction) {
+  string n1 = resolveVars(par1, sess, sc_sess, event_params);
+  string n2 = resolveVars(par2, sess, sc_sess, event_params);
+
+  string varname = par1;
+  if (varname.length() && varname[0] == '$')
+    varname = varname.substr(1);
+
+  // todo: err checking
+  string res = int2str(atoi(n1.c_str()) * atoi(n2.c_str()));
+
+  DBG("setting var[%s] = %s * %s = %s\n", 
+      varname.c_str(), n1.c_str(), n2.c_str(), res.c_str());
+  sc_sess->var[varname] = res;
+
+} EXEC_ACTION_END;
+
 CONST_ACTION_2P(SCUIntAction, ',', false);
 EXEC_ACTION_START(SCUIntAction) {
   string val = resolveVars(par2, sess, sc_sess, event_params);
@@ -368,6 +418,72 @@ EXEC_ACTION_START(SCUIntAction) {
   sc_sess->var[varname] = int2str((int)atof(val.c_str()));
   DBG("set $%s = %s\n", 
       varname.c_str(), sc_sess->var[varname].c_str());
+
+} EXEC_ACTION_END;
+
+CONST_ACTION_2P(SCUMD5Action, ',', false);
+EXEC_ACTION_START(SCUMD5Action) {
+  string n1 = resolveVars(par1, sess, sc_sess, event_params);
+  string n2 = resolveVars(par2, sess, sc_sess, event_params);
+
+  string varname = par1;
+  if (varname.length() && varname[0] == '$')
+    varname = varname.substr(1);
+
+  string res = calculateMD5(n2);
+
+  DBG("setting var[%s] = %s\n", varname.c_str(), res.c_str());
+  sc_sess->var[varname] = res;
+
+} EXEC_ACTION_END;
+
+CONST_ACTION_2P(SCUReplaceAction, ',', false);
+EXEC_ACTION_START(SCUReplaceAction) {
+
+  string subject = resolveVars(par1, sess, sc_sess, event_params);
+
+  vector<string> vars = explode(par2, "=>");
+  if (vars.size() != 2) {
+    ERROR("could not parse search=>replace '%s'\n", par2.c_str());
+    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+    sc_sess->SET_STRERROR("could not parse search=>replace '" + par2 +"'\n");
+    return false;
+  }
+
+  string search;
+
+  if ((vars[0])[0] != '$') {
+    search = vars[0];
+  } else {
+    search = resolveVars(vars[0], sess, sc_sess, event_params);
+    if (search.length() == 0) {
+      ERROR("search var '%s' value is empty\n", vars[0].c_str());
+      sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+      sc_sess->SET_STRERROR("search var '" + vars[0] + "' value is empty\n");
+      return false;
+    }
+  }
+
+  string replace;
+
+  if ((vars[1])[0] != '$') {
+    replace = vars[1];
+  } else {
+    replace = resolveVars(vars[1], sess, sc_sess, event_params);
+  }
+
+  size_t pos = 0;
+  while ((pos = subject.find(search, pos)) != std::string::npos) {
+    subject.replace(pos, search.length(), replace);
+    pos += replace.length();
+  }
+
+  string varname = par1;
+  if (varname.length() && varname[0] == '$')
+    varname = varname.substr(1);
+
+  DBG("setting var[%s] = %s\n", varname.c_str(), subject.c_str());
+  sc_sess->var[varname] = subject;
 
 } EXEC_ACTION_END;
 
@@ -394,6 +510,67 @@ EXEC_ACTION_START(SCUSplitStringAction) {
 
     last_p = p+1;    
   }
+} EXEC_ACTION_END;
+
+CONST_ACTION_2P(SCUGenSplitStringAction, ',', true);
+EXEC_ACTION_START(SCUGenSplitStringAction) {
+  string str = resolveVars(par1, sess, sc_sess, event_params);
+  string delim = resolveVars(par2, sess, sc_sess, event_params);
+
+  string varname = par1;
+  if (varname.length() == 0) {
+    ERROR("varname is empty\n");
+    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+    sc_sess->SET_STRERROR("varname is empty\n");
+    return false;
+  }
+  if (varname[0] == '$')
+    varname = varname.substr(1);
+
+  unsigned int i;
+  if (delim.length() == 0) {
+    for(i = 0; i < str.size(); ++i) {
+      sc_sess->var[varname + "[" + int2str(i) + "]"] = str[i];
+    }
+  } else {
+    size_t p = 0, last_p = 0;
+    i = 0;
+    while (true) {
+      p = str.find(delim, last_p);
+      if (p == string::npos) {
+	if (last_p <= str.length())
+	  sc_sess->var[varname + "[" + int2str(i) + "]"] = str.substr(last_p);
+	break;
+      }
+      sc_sess->var[varname + "[" + int2str(i) + "]"] =
+	str.substr(last_p, p - last_p);
+      last_p = p + delim.length();
+      i++;
+    }
+  }
+} EXEC_ACTION_END;
+
+CONST_ACTION_2P(SCUDecodeJsonAction, ',', true);
+EXEC_ACTION_START(SCUDecodeJsonAction) {
+  int i;
+  const string json_str = resolveVars(par1, sess, sc_sess, event_params);
+  string struct_name = par2;
+  if (struct_name.length() == 0) {
+    ERROR("struct name is empty\n");
+    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+    sc_sess->SET_STRERROR("struct name is empty\n");
+    return false;
+  }
+  if (struct_name[0] == '$')
+    struct_name = struct_name.substr(1);
+  AmArg json;
+  if (!json2arg(json_str, json)) {
+    ERROR("failed to decode json string '%s'\n", json_str.c_str());
+    sc_sess->SET_ERRNO(DSM_ERRNO_UNKNOWN_ARG);
+    sc_sess->SET_STRERROR("failed to decode json string\n");
+    return false;
+  }
+  utils_set_session_vars(sc_sess, struct_name, json);
 } EXEC_ACTION_END;
 
 EXEC_ACTION_START(SCUEscapeCRLFAction) {
@@ -483,3 +660,19 @@ MATCH_CONDITION_START(IsInListCondition) {
     return res;
   }
  } MATCH_CONDITION_END;
+
+CONST_CONDITION_2P(StartsWithCondition, ',', false);
+MATCH_CONDITION_START(StartsWithCondition) {
+
+  string key = resolveVars(par1, sess, sc_sess, event_params);
+  string prefix = resolveVars(par2, sess, sc_sess, event_params);
+
+  DBG("checking whether '%s' starts with '%s'\n", key.c_str(), prefix.c_str());
+  bool res = false;
+  res = (key.length() >= prefix.length()) &&
+    std::equal(prefix.begin(), prefix.end(), key.begin());
+  DBG("prefix %sfound\n", res?"":"not ");
+
+  return res;
+
+} MATCH_CONDITION_END;
