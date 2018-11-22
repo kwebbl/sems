@@ -25,24 +25,21 @@ ELSE(EXISTS ${CMAKE_SOURCE_DIR}/.git)
 	    "${SEMS_MAJOR_VERSION}.${SEMS_MINOR_VERSION}.${SEMS_BUILD_VERSION}")
 ENDIF(EXISTS ${CMAKE_SOURCE_DIR}/.git)
 
+ADD_DEFINITIONS(-DSEMS_VERSION=\\\"${SEMS_VERSION}\\\")
+ADD_DEFINITIONS(-DARCH=\\\"${CMAKE_SYSTEM_PROCESSOR}\\\")
+ADD_DEFINITIONS(-DOS=\\\"${CMAKE_SYSTEM_NAME}\\\")
+
+ADD_DEFINITIONS(-DSYSTEM_SAMPLECLOCK_RATE=32000LL)
+ADD_DEFINITIONS(-DSEMS_APP_NAME=\\\"sems\\\")
+
 MESSAGE(STATUS "Configuring ${CMAKE_PROJECT_NAME} v. ${SEMS_VERSION}")
-
-SET(SEMS_APP_NAME "sems")
-
-IF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
-	message(FATAL_ERROR "In-source builds are not allowed.
-CMake would overwrite all makefiles distributed with SEMS.
-Please create a directory and run cmake from there, passing the path
-to this source directory as the last argument.
-This process created the file `CMakeCache.txt' and the directory `CMakeFiles'.
-Please delete them.")
-ENDIF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
 
 OPTION(SEMS_USE_SPANDSP       "Build with spandsp" OFF)
 OPTION(SEMS_USE_LIBSAMPLERATE "Build with libsamplerate" OFF)
 OPTION(SEMS_USE_ZRTP          "Build with ZRTP" OFF)
 OPTION(SEMS_USE_MP3           "Build with Lame MP3" OFF)
 OPTION(SEMS_USE_ILBC          "Build with iLBC library (fallback to bundled)" ON)
+OPTION(SEMS_USE_G729          "Build with bcg729 library" OFF)
 OPTION(SEMS_USE_TTS           "Build with Text-to-speech support (requires Flite)" OFF)
 OPTION(SEMS_USE_OPENSSL       "Build with OpenSSL" OFF)
 OPTION(SEMS_USE_MONITORING    "Build with monitoring support" OFF)
@@ -60,7 +57,7 @@ ENDIF (${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION} STREQUAL "2.4")
 SET(CMAKE_DL_LIBS ${CMAKE_DL_LIBS} m pthread)
 
 IF (NOT SEMS_CFG_PREFIX)
-	SET(SEMS_CFG_PREFIX "/usr/local")
+	SET(SEMS_CFG_PREFIX "")
 ENDIF (NOT SEMS_CFG_PREFIX)
 MESSAGE(STATUS "SEMS cfg prefix was set to: ${SEMS_CFG_PREFIX}")
 
@@ -137,6 +134,13 @@ IF(SEMS_USE_ILBC)
 ELSE(SEMS_USE_ILBC)
 	MESSAGE(STATUS "Uusing iLBC library: NO")
 ENDIF(SEMS_USE_ILBC)
+
+IF(SEMS_USE_G729)
+	FIND_PACKAGE(Bcg729)
+	MESSAGE(STATUS "Using bcg729 library: YES")
+ELSE(SEMS_USE_G729)
+	MESSAGE(STATUS "Using bcg729 library: NO (default)")
+ENDIF(SEMS_USE_G729)
 
 # build in support for monitoring?
 IF(SEMS_USE_MONITORING)
@@ -255,7 +259,7 @@ IF(CMAKE_COMPILER_IS_GNUCC)
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
 IF(CMAKE_COMPILER_IS_GNUCXX)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_THREAD_SAFE -D_REENTRANT -Wall -Wno-reorder -fPIC -g -O2")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_THREAD_SAFE -D_REENTRANT -Wall -Wno-reorder -fPIC -std=c++11 -g -O2")
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
@@ -281,6 +285,15 @@ SET(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -D_DEBUG")
 ADD_DEFINITIONS(-DLOG_BUFFER_LEN=2048)
 
 #ADD_DEFINITIONS(-DDEBUG_PLAYOUTBUF)
+
+# Propagate all unparsed SIP headers into AmSipReply. Disabled by default
+# because only special applications might need this and it brings higher memory
+# demands and affects performance.
+#ADD_DEFINITIONS(-DPROPAGATE_UNPARSED_REPLY_HEADERS)
+
+IF(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	ADD_DEFINITIONS(-DPROPAGATE_COREDUMP_SETTINGS)
+ENDIF(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
 
