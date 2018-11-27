@@ -1,4 +1,6 @@
-Actions: 
+Actions
+-------
+
  utils.getNewId(string varname)
 
  utils.playCountRight(int cnt [, string basedir])
@@ -44,8 +46,17 @@ Actions:
  utils.sub($var, val)
    subtract val from var
 
+ utils.mul($var, val)
+   multiply integer valued var by integer value val
+
  utils.int($var, val)
    get integer part of val into var
+
+ utils.md5($var, val)
+   calculate md5 hex digest of val to $var
+
+ utils.replace($subject, (search|$search)=>(replace|$replace))
+   in $subject, replace each search string with replace string   
 
  utils.splitStringCR($var [, $dstvar])
  utils.splitStringCR(val, $dstvar])
@@ -56,14 +67,20 @@ Actions:
     sys.popen($myresult="/bin/ls wav/*");    
     utils.splitStringCR($myresult);
 
+ utils.splitString($var, delim|$delim)
+   split string in $var on delim or $delim into array $var[0], ...
+   if delim is empty, splits string on every character
+
+ utils.decodeJson($var, $prefix)
+   decode jSON document string in $var into $prefix struct or array
+   
  utils.escapeCRLF($var)
-   replace CRLF (\r\n) in string with escaped CRLF (\\r\\n) 
+   replace CRLF string in $var with \r\n string
 
  utils.unescapeCRLF($var)
-   replace escaped CRLF (\\r\\n) in string with CRLF (\r\n) 
+   replace \r\n string in $var with CRLF string
 
-
-utils.playRingTone(length [, on [, off [, f [, f2]]]])
+ utils.playRingTone(length [, on [, off [, f [, f2]]]])
    play a RingTone (ringback tone)
    defaults to length=0 (indefinite), on 1000ms, off 2000ms, f 440Hz, f2 480Hz
 
@@ -73,5 +90,8 @@ utils.playRingTone(length [, on [, off [, f [, f2]]]])
 Conditions
 ----------
 
-utils.isInList(key, cs_list) - match if key is in comma-separated list
+ utils.isInList(key, cs_list) - match if key is in comma-separated list
    e.g. if utils.isInList(#sip_code, "404, 405") { ... }
+
+ utils.startsWith(subject|$subject, prefix|$prefix) - match if subject
+   starts with prefix

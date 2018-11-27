@@ -25,6 +25,7 @@
 #include "IvrAudioMixIn.h"
 #include "IvrUAC.h"
 #include "Ivr.h"
+#include "IvrEvent.h"
 
 #include "AmSessionContainer.h"
 
@@ -34,6 +35,12 @@
 #include "AmApi.h"
 #include "AmUtils.h"
 #include "AmPlugIn.h"
+#include "AmEventDispatcher.h"
+
+#ifdef USE_MONITORING
+#include "ampi/MonitoringAPI.h"
+#include "AmSessionContainer.h"
+#endif
 
 #include <unistd.h>
 #include <pthread.h>
@@ -114,6 +121,7 @@ extern "C" {
     AmConfig::IgnoreSIGCHLD = ignore;
     DBG("%sgnoring SIGCHLD.\n", ignore?"I":"Not i");
 
+    Py_INCREF(Py_None);
     return Py_None;
   }
 
@@ -139,15 +147,113 @@ extern "C" {
     else 
       ERROR("Could not find __c_ivrFactory in Python state.\n");
 
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  // Log a line in the monitoring log
+  static PyObject* ivr_monitorLog(PyObject* self, PyObject* args)
+  {
+#ifdef USE_MONITORING
+    char *callid;
+    char *property;
+    char *value;
+    if(!PyArg_ParseTuple(args, "sss", &callid, &property, &value))
+      return NULL;
+
+    try {
+      AmArg di_args,ret;
+      di_args.push(AmArg(callid));
+      di_args.push(AmArg(property));
+      di_args.push(AmArg(value));
+      AmSessionContainer::monitoring_di->invoke("log", di_args, ret);
+    }
+    catch(...) {}
+#endif
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  // Add a log line to the monitoring log
+  static PyObject* ivr_monitorLogAdd(PyObject* self, PyObject* args)
+  {
+#ifdef USE_MONITORING
+    char *callid;
+    char *property;
+    char *value;
+    if(!PyArg_ParseTuple(args, "sss", &callid, &property, &value))
+      return NULL;
+
+    try {
+      AmArg di_args,ret;
+      di_args.push(AmArg(callid));
+      di_args.push(AmArg(property));
+      di_args.push(AmArg(value));
+      AmSessionContainer::monitoring_di->invoke("logAdd", di_args, ret);
+    }
+    catch(...) {}
+#endif
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  // Mark the session finished in the monitoring log
+  static PyObject* ivr_monitorFinish(PyObject* self, PyObject* args)
+  {
+#ifdef USE_MONITORING
+    char *callid;
+    if(!PyArg_ParseTuple(args, "s", &callid))
+      return NULL;
+
+    try {
+      AmArg di_args,ret;
+      di_args.push(AmArg(callid));
+      AmSessionContainer::monitoring_di->invoke("markFinished", di_args, ret);
+    }
+    catch(...) {}
+#endif
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  // Send inter-session message
+  static PyObject* ivr_sendMessage(PyObject* self, PyObject* args)
+  {
+    char *dest;
+    char *msg;
+    if(!PyArg_ParseTuple(args, "ss", &dest, &msg))
+      return NULL;
+
+    AmEventDispatcher::instance()->post(dest, new IvrEvent(msg));
+    Py_INCREF(Py_None);
     return Py_None;
   }
 
   static PyMethodDef ivr_methods[] = {
     {"log", (PyCFunction)ivr_log, METH_VARARGS,"Log a message using Sems' logging system"},
     {"getHeader", (PyCFunction)ivr_getHeader, METH_VARARGS,"Python getHeader wrapper"},
-    {"getHeaders", (PyCFunction)ivr_getHeader, METH_VARARGS,"Python getHeaders wrapper"},
+    {"getHeaders", (PyCFunction)ivr_getHeaders, METH_VARARGS,"Python getHeaders wrapper"},
     {"createThread", (PyCFunction)ivr_createThread, METH_VARARGS, "Create another interpreter thread"},
     {"setIgnoreSigchld", (PyCFunction)ivr_ignoreSigchld, METH_VARARGS, "ignore SIGCHLD signal"},
+
+    // Log a line in the monitoring log
+    {"monitorLog",  (PyCFunction)ivr_monitorLog, METH_VARARGS,
+     "log a line in the monitoring log"
+    },
+    // Add a log line to the monitoring log
+    {"monitorLogAdd",  (PyCFunction)ivr_monitorLogAdd, METH_VARARGS,
+     "add a log line to the monitoring log"
+    },
+    // Mark the session finished in the monitoring log
+    {"monitorFinish",  (PyCFunction)ivr_monitorFinish, METH_VARARGS,
+     "mark the session finished in the monitoring log"
+    },
+
+    // Send inter-session message
+    {"sendMessage", (PyCFunction)ivr_sendMessage, METH_VARARGS,
+     "send inter-session message"
+    },
+
     {NULL}  /* Sentinel */
   };
 }
@@ -219,6 +325,9 @@ void IvrFactory::import_ivr_builtins()
   PyModule_AddIntConstant(ivr_module, "AUDIO_READ",AUDIO_READ);
   PyModule_AddIntConstant(ivr_module, "AUDIO_WRITE",AUDIO_WRITE);
 
+  PyModule_AddStringConstant(ivr_module, "LOCAL_SIP_IP", AmConfig::SIP_Ifs[0].LocalIP.c_str());
+  PyModule_AddIntConstant(ivr_module, "LOCAL_SIP_PORT", AmConfig::SIP_Ifs[0].LocalPort);
+
   // add log level for the log module
   PyModule_AddIntConstant(ivr_module, "SEMS_LOG_LEVEL",log_level);
 
@@ -272,12 +381,14 @@ void IvrFactory::set_sys_path(const string& script_path)
     return;
   }
 
-  if(!PyList_Insert(sys_path,0,PyString_FromString(script_path.c_str()))){
+  PyObject* script_path_str = PyString_FromString(script_path.c_str());
+  if(!PyList_Insert(sys_path, 0, script_path_str)){
     PyErr_PrintEx(0);
   }
+  Py_DECREF(script_path_str);
 }
 
-IvrDialog* IvrFactory::newDlg(const string& name)
+IvrDialog* IvrFactory::newDlg(const string& name, AmArg* session_params)
 {
   PYLOCK;
 
@@ -309,7 +420,7 @@ IvrDialog* IvrFactory::newDlg(const string& name)
     return NULL;
   }    
 
-  dlg->setPyPtrs(mod_desc.mod,dlg_inst);
+  dlg->setPyPtrs(mod_desc.mod, dlg_inst, session_params);
   Py_DECREF(dlg_inst);
 
   setupSessionTimer(dlg);
@@ -332,19 +443,21 @@ bool IvrFactory::loadScript(const string& path)
   }
 
   if(cfg.loadFile(cfg_file)){
-    WARN("could not load config file at %s\n",cfg_file.c_str());
+    WARN("could not load config file at %s\n", cfg_file.c_str());
   } else {
     for(map<string,string>::const_iterator it = cfg.begin();
 	it != cfg.end(); it++){
-      PyDict_SetItem(config, 
-		     PyString_FromString(it->first.c_str()),
-		     PyString_FromString(it->second.c_str()));
+      PyObject *f = PyString_FromString(it->first.c_str());
+      PyObject *s = PyString_FromString(it->second.c_str());
+      PyDict_SetItem(config, f, s);
+      Py_DECREF(f);
+      Py_DECREF(s);
     }
   }
 
   // set config ivr ivr_module while loading
   Py_INCREF(config);
-  PyObject_SetAttrString(ivr_module,"config",config);
+  PyObject_SetAttrString(ivr_module, "config", config);
   
   // load module
   modName = PyString_FromString(path.c_str());
@@ -365,8 +478,8 @@ bool IvrFactory::loadScript(const string& path)
     // is still in the dictionnary.
     dict = PyImport_GetModuleDict();
     Py_INCREF(dict);
-    if(PyDict_Contains(dict,modName)){
-      PyDict_DelItem(dict,modName);
+    if(PyDict_Contains(dict, modName)){
+      PyDict_DelItem(dict, modName);
     }
     Py_DECREF(dict);
     Py_DECREF(modName);
@@ -394,10 +507,10 @@ bool IvrFactory::loadScript(const string& path)
     goto error2;
   }
 
-  PyObject_SetAttrString(mod,"config",config);
+  PyObject_SetAttrString(mod, "config", config);
 
   mod_reg.insert(std::make_pair(path,
-			        IvrScriptDesc(mod,dlg_class)));
+			        IvrScriptDesc(mod, dlg_class)));
 
   return true;
 
@@ -416,6 +529,13 @@ int IvrFactory::onLoad()
 {
   if(cfg.loadFile(add2path(AmConfig::ModConfigPath,1,MOD_NAME ".conf")))
     return -1;
+
+#ifdef USE_MONITORING
+  if(!AmPlugIn::instance()->getFactory4Di("monitoring")) {
+    ERROR("Monitoring plugin not available, bailing!\n");
+    return -1;
+  }
+#endif
 
   // get application specific global parameters
   configureModule(cfg);
@@ -510,16 +630,6 @@ void IvrFactory::start_deferred_threads() {
   }
 }
 
-
-int IvrDialog::transfer(const string& target)
-{
-  return dlg->transfer(target);
-}
-
-int IvrDialog::refer(const string& target, int expires) {
-  return dlg->refer(target, expires);
-}
-
 int IvrDialog::drop()
 {
   int res = dlg->drop();
@@ -552,13 +662,25 @@ void IvrFactory::setupSessionTimer(AmSession* s) {
 AmSession* IvrFactory::onInvite(const AmSipRequest& req, const string& app_name,
 				const map<string,string>& app_params)
 {
+  DBG("IvrFactory::onInvite\n");
+
   return newDlg(app_name);
 }
+
+AmSession* IvrFactory::onInvite(const AmSipRequest& req, const string& app_name,
+            AmArg& session_params)
+{
+  DBG("IvrFactory::onInvite UAC\n");
+
+  return newDlg(app_name, &session_params);
+}
+
 
 IvrDialog::IvrDialog()
   : py_mod(NULL), 
     py_dlg(NULL),
-    playlist(this)
+    playlist(this),
+    session_params(NULL)
 {
   set_sip_relay_only(false);
 }
@@ -567,6 +689,8 @@ IvrDialog::~IvrDialog()
 {
   DBG("----------- IvrDialog::~IvrDialog() ------------- \n");
 
+  if(session_params) delete session_params;
+
   playlist.flush();
   
   PYLOCK;
@@ -574,12 +698,14 @@ IvrDialog::~IvrDialog()
   Py_XDECREF(py_dlg);
 }
 
-void IvrDialog::setPyPtrs(PyObject *mod, PyObject *dlg)
+void IvrDialog::setPyPtrs(PyObject *mod, PyObject *dlg, AmArg *sp)
 {
   assert(py_mod = mod);
   assert(py_dlg = dlg);
   Py_INCREF(py_mod);
   Py_INCREF(py_dlg);
+
+  session_params = sp;
 }
 
 static PyObject *
@@ -674,8 +800,10 @@ bool IvrDialog::callPyEventHandler(const char* name, const char* fmt, ...)
 
 void IvrDialog::onInvite(const AmSipRequest& req)
 {
+  invite_req = req;
+  est_invite_cseq = req.cseq;
   if(callPyEventHandler("onInvite","(s)",req.hdrs.c_str()))
-    AmB2BCallerSession::onInvite(req);
+    AmB2BSession::onInvite(req);
 }
 
 void IvrDialog::onSessionStart()
@@ -714,10 +842,12 @@ void IvrDialog::onDtmf(int event, int duration_msec)
     AmB2BCallerSession::onDtmf(event,duration_msec);
 }
 
-void IvrDialog::onOtherBye(const AmSipRequest& req)
+bool IvrDialog::onOtherBye(const AmSipRequest& req)
 {
   if(callPyEventHandler("onOtherBye",NULL))
-    AmB2BCallerSession::onOtherBye(req);
+    return AmB2BCallerSession::onOtherBye(req);
+  else
+    return true;
 }
 
 bool IvrDialog::onOtherReply(const AmSipReply& r)
@@ -740,7 +870,8 @@ PyObject * getPySipRequest(const AmSipRequest& r)
   return IvrSipRequest_FromPtr(new AmSipRequest(r));
 }
 
-void safe_Py_DECREF(PyObject* pyo) {
+void safe_Py_DECREF(PyObject* pyo)
+{
   PYLOCK;
   Py_DECREF(pyo);
 }
@@ -749,20 +880,25 @@ void IvrDialog::onSipReply(const AmSipRequest& req,
 			   const AmSipReply& reply, 
 			   AmBasicSipDialog::Status old_dlg_status) 
 {
-  PyObject* pyo = getPySipReply(reply);
-  callPyEventHandler("onSipReply","(O)", pyo);
-  safe_Py_DECREF(pyo);
-  AmB2BCallerSession::onSipReply(req,reply,old_dlg_status);
+  PyObject* pyrp = getPySipReply(reply);
+  PyObject* pyrq = getPySipRequest(req);
+  callPyEventHandler("onSipReply","(OO)", pyrq, pyrp);
+  safe_Py_DECREF(pyrp);
+  safe_Py_DECREF(pyrq);
+  AmB2BCallerSession::onSipReply(req, reply, old_dlg_status);
 }
 
-void IvrDialog::onSipRequest(const AmSipRequest& r){
+void IvrDialog::onSipRequest(const AmSipRequest& r)
+{
+  mReq = r;
   PyObject* pyo = getPySipRequest(r);
   callPyEventHandler("onSipRequest","(O)", pyo);
   safe_Py_DECREF(pyo);
   AmB2BCallerSession::onSipRequest(r);
 }
 
-void IvrDialog::onRtpTimeout() {
+void IvrDialog::onRtpTimeout()
+{
   callPyEventHandler("onRtpTimeout",NULL);
 }
 
@@ -771,16 +907,40 @@ void IvrDialog::process(AmEvent* event)
   DBG("IvrDialog::process\n");
 
   AmAudioEvent* audio_event = dynamic_cast<AmAudioEvent*>(event);
-  if(audio_event && audio_event->event_id == AmAudioEvent::noAudio){
-
-    callPyEventHandler("onEmptyQueue", NULL);
-    event->processed = true;
+  if(audio_event) {
+    if(audio_event->event_id == AmAudioEvent::noAudio) {
+      callPyEventHandler("onEmptyQueue", NULL);
+      event->processed = true;
+    } else if(audio_event->event_id == AmAudioEvent::cleared) {
+      callPyEventHandler("onAudioCleared", NULL);
+      event->processed = true;
+    }
   }
-    
+
   AmPluginEvent* plugin_event = dynamic_cast<AmPluginEvent*>(event);
   if(plugin_event && plugin_event->name == "timer_timeout") {
     if (plugin_event->data.get(0).asInt() >= 0) {
       callPyEventHandler("onTimer", "(i)", plugin_event->data.get(0).asInt());
+      event->processed = true;
+    }
+  }
+  
+  IvrEvent* ivr_event = dynamic_cast<IvrEvent*>(event);
+  if(ivr_event) {
+    callPyEventHandler("onIvrMessage", "(s)", ivr_event->msg.c_str());
+    event->processed = true;
+  }
+  
+  AmSystemEvent* sys_event = dynamic_cast<AmSystemEvent*>(event);
+  if(sys_event) {
+    if(sys_event->sys_event == AmSystemEvent::User1) {
+      callPyEventHandler("onUser1", NULL);
+      event->processed = true;
+    } else if(sys_event->sys_event == AmSystemEvent::User2) {
+      callPyEventHandler("onUser2", NULL);
+      event->processed = true;
+    } else if(sys_event->sys_event == AmSystemEvent::ServerShutdown) {
+      callPyEventHandler("onServerShutdown", NULL);
       event->processed = true;
     }
   }
@@ -790,7 +950,6 @@ void IvrDialog::process(AmEvent* event)
 
   return;
 }
-
 
 void IvrDialog::connectCallee(const string& remote_party, const string& remote_uri,
 			      const string& from_party, const string& from_uri) {

@@ -646,7 +646,7 @@ void CallLeg::onB2BConnect(ConnectLegEvent* co_ev)
   }
 
   int res = dlg->sendRequest(SIP_METH_INVITE, &body,
-      co_ev->hdrs, SIP_FLAGS_VERBATIM);
+      co_ev->hdrs, SIP_FLAGS_VERBATIM, co_ev->r_max_forwards - 1);
   if (res < 0) {
     DBG("sending INVITE failed, relaying back error reply\n");
     relayError(SIP_METH_INVITE, co_ev->r_cseq, true, res);
@@ -913,6 +913,7 @@ void CallLeg::onInvite(const AmSipRequest& req)
 
   if (call_status == Disconnected) { // for initial INVITE only
     est_invite_cseq = req.cseq; // remember initial CSeq
+    est_invite_max_forwards = req.max_forwards; // and Max-Forwards
     // initialize RTP relay
 
     // relayed INVITE - we need to add the original INVITE to
@@ -1102,10 +1103,10 @@ void CallLeg::onBye(const AmSipRequest& req)
   AmB2BSession::onBye(req);
 }
 
-void CallLeg::onOtherBye(const AmSipRequest& req)
+bool CallLeg::onOtherBye(const AmSipRequest& req)
 {
   updateCallStatus(Disconnected, &req);
-  AmB2BSession::onOtherBye(req);
+  return AmB2BSession::onOtherBye(req);
 }
 
 void CallLeg::onNoAck(unsigned int cseq)
@@ -1275,9 +1276,9 @@ void CallLeg::addCallee(CallLeg *callee, const string &hdrs)
     // use non-hold SDP if possible
     AmMimeBody body(established_body);
     sdp2body(non_hold_sdp, body);
-    addNewCallee(callee, new ConnectLegEvent(hdrs, body));
+    addNewCallee(callee, new ConnectLegEvent(hdrs, body, est_invite_max_forwards));
   }
-  else addNewCallee(callee, new ConnectLegEvent(hdrs, established_body));
+  else addNewCallee(callee, new ConnectLegEvent(hdrs, established_body, est_invite_max_forwards));
 }
 
 /*void CallLeg::addCallee(CallLeg *callee, const string &hdrs, AmB2BSession::RTPRelayMode mode)

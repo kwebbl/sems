@@ -364,7 +364,11 @@ bool AmSipDialog::onRxReplyStatus(const AmSipReply& reply)
     case Trying:
     case Proceeding:
       if(reply.code < 200){
-	if(reply.code == 100 || reply.to_tag.empty())
+	// Do not go to Early state if To tag can still change
+	// Otherwise reply check will fail
+	if (((reply.code == 100) ||
+	     ((reply.code >= 180) && (reply.code <= 183)))
+	    || reply.to_tag.empty())
 	  setStatus(Proceeding);
 	else {
 	  setStatus(Early);
@@ -517,7 +521,7 @@ AmSipRequest* AmSipDialog::getUASPendingInv()
 
 int AmSipDialog::bye(const string& hdrs, int flags)
 {
-    switch(status){
+  switch(status){
 
     case Disconnecting:
     case Connected: {
@@ -545,9 +549,9 @@ int AmSipDialog::bye(const string& hdrs, int flags)
     case Trying:
     case Proceeding:
     case Early:
-	if(getUACInvTransPending())
-	    return cancel();
-	else {  
+      if(getUACInvTransPending())
+	return cancel(hdrs);
+      else {
 	    for (TransMap::iterator it=uas_trans.begin();
 		 it != uas_trans.end(); it++) {
 	      if (it->second.method == SIP_METH_INVITE){
@@ -644,12 +648,14 @@ int AmSipDialog::update(const AmMimeBody* body,
 
 int AmSipDialog::refer(const string& refer_to,
 		       int expires,
-		       const string& referred_by)
+		       const string& referred_by,
+		       const string& extrahdrs)
 {
   if(getStatus() == Connected) {
     string hdrs = SIP_HDR_COLSP(SIP_HDR_REFER_TO) + refer_to + CRLF;
     if (expires>=0) 
       hdrs+= SIP_HDR_COLSP(SIP_HDR_EXPIRES) + int2str(expires) + CRLF;
+    hdrs+= extrahdrs;
     if (!referred_by.empty())
       hdrs+= SIP_HDR_COLSP(SIP_HDR_REFERRED_BY) + referred_by + CRLF;
 
@@ -743,7 +749,7 @@ int AmSipDialog::cancel()
 {
     for(TransMap::reverse_iterator t = uac_trans.rbegin();
 	t != uac_trans.rend(); t++) {
-	
+
 	if(t->second.method == SIP_METH_INVITE){
 
 	  if(getStatus() != Cancelling){
@@ -758,6 +764,29 @@ int AmSipDialog::cancel()
 	}
     }
     
+    ERROR("could not find INVITE transaction to cancel\n");
+    return -1;
+}
+
+int AmSipDialog::cancel(const string& hdrs)
+{
+    for(TransMap::reverse_iterator t = uac_trans.rbegin();
+	t != uac_trans.rend(); t++) {
+
+	if(t->second.method == SIP_METH_INVITE){
+
+	  if(getStatus() != Cancelling){
+	    setStatus(Cancelling);
+	    return SipCtrlInterface::cancel(&t->second.tt, local_tag,
+					    t->first, hdrs);
+	  }
+	  else {
+	    ERROR("INVITE transaction has already been cancelled\n");
+	    return -1;
+	  }
+	}
+    }
+
     ERROR("could not find INVITE transaction to cancel\n");
     return -1;
 }

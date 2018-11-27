@@ -76,7 +76,7 @@ static const SdpPayload *findPayload(const std::vector<SdpPayload>& payloads, co
     }
 
     if (p->clock_rate != payload.clock_rate) continue;
-    if ((p->encoding_param >= 0) && (payload.encoding_param >= 0) && 
+    if ((p->encoding_param > 0) && (payload.encoding_param > 0) &&
         (p->encoding_param != payload.encoding_param)) continue;
     return &(*p);
   }
@@ -405,8 +405,7 @@ void SBCCallLeg::applyBProfile()
   if (!call_profile.callid.empty()) 
     dlg->setCallid(call_profile.callid);
 
-  if(!call_profile.bleg_dlg_contact_params.empty())
-    dlg->setContactParams(call_profile.bleg_dlg_contact_params);
+  dlg->setContact(call_profile.bleg_contact);
 }
 
 int SBCCallLeg::relayEvent(AmEvent* ev)
@@ -690,11 +689,12 @@ void SBCCallLeg::onBye(const AmSipRequest& req)
     SBCEventLog::instance()->logCallEnd(req,getLocalTag(),"bye",&call_connect_ts);
 }
 
-void SBCCallLeg::onOtherBye(const AmSipRequest& req)
+bool SBCCallLeg::onOtherBye(const AmSipRequest& req)
 {
-  CallLeg::onOtherBye(req);
+  bool res = CallLeg::onOtherBye(req);
   if(a_leg)
     SBCEventLog::instance()->logCallEnd(req,getLocalTag(),"bye",&call_connect_ts);
+  return res;
 }
 
 void SBCCallLeg::onDtmf(int event, int duration)
@@ -834,6 +834,10 @@ void SBCCallLeg::onInvite(const AmSipRequest& req)
 
   ParamReplacerCtx ctx(&call_profile);
   ctx.app_param = getHeader(req.hdrs, PARAM_HDR, true);
+
+  if (req.max_forwards <= 0) {
+    throw AmSession::Exception(483, SIP_REPLY_TOO_MANY_HOPS);
+  }
 
   // process call control
   if (call_profile.cc_interfaces.size()) {
@@ -1380,7 +1384,7 @@ bool SBCCallLeg::onBeforeRTPRelay(AmRtpPacket* p, sockaddr_storage* remote_addr)
 
 void SBCCallLeg::onAfterRTPRelay(AmRtpPacket* p, sockaddr_storage* remote_addr)
 {
-  for(list<atomic_int*>::iterator it = rtp_pegs.begin();
+  for(list<::atomic_int*>::iterator it = rtp_pegs.begin();
       it != rtp_pegs.end(); ++it) {
     (*it)->inc(p->getBufferSize());
   }

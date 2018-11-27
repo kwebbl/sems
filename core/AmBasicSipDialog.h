@@ -28,6 +28,7 @@
 #define _AmBasicSipDialog_h_
 
 #include "AmSipMsg.h"
+#include "AmUriParser.h"
 
 #include <string>
 #include <vector>
@@ -98,6 +99,7 @@ protected:
   string first_branch;
 
   string contact_params; // params in Contact-HF
+  AmUriParser contact;
 
   string user;         // local user
   string domain;       // local domain
@@ -264,6 +266,10 @@ public:
   virtual void setContactParams(const string& new_contact_params)
   { contact_params = new_contact_params; }
 
+  const AmUriParser &getContact() const { return contact; }
+  virtual void setContact(const AmUriParser &new_contact)
+  { contact = new_contact; }
+
   const string& getUser() const { return user; }
   virtual void setUser(const string& new_user)
   { user = new_user; }
@@ -382,7 +388,8 @@ public:
   virtual int sendRequest(const string& method, 
 			  const AmMimeBody* body = NULL,
 			  const string& hdrs = "",
-			  int flags = 0);
+			  int flags = 0,
+			  int max_forwards = -1);
 
   /**
    * Terminates pending UAS/UAC transactions

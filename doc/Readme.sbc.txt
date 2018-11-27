@@ -40,6 +40,7 @@ SBC profiles may be loaded at startup (load_profiles), and can be
 selected with the active_profile configuration option. The
 active_profile option is a comma-separated list, the first profile that
 matches, i.e. is non-empty, will be used.
+Optional a profiles_path ca be set in the config to load the profiles from a special folder.
 
 In this list a profile may be selected
 
@@ -202,8 +203,10 @@ The patterns which can be used are the following:
        and
       next_hop=$H(P-NextHop)
 
-  $HU(headername) - header <headername> (as URI) User
-  $Hd(headername) - header <headername> (as URI) domain (host:port)
+  $HU(headername)            - header <headername> (as URI) User
+  $Hd(headername)            - header <headername> (as URI) domain (host:port)
+  $HP(headername)            - header <headername> (as URI) Params
+  $HP(headername)(paramname) - header <headername> (as URI) param with paramname
   ...
 
    Example:
@@ -585,6 +588,24 @@ Examples:
  append_headers="P-Received-IP: $Ri\r\nP-Received-Port: $Rp"
  append_headers="P-Source-IP: $si\r\nP-Source-Port: $sp\r\n"
  append_headers="P-Original-URI: $r"
+
+Contact header rewriting
+------------------------
+
+SBC can add/alter Contact header parts
+for the the outgoing initial INVITE by using the following options:
+
+  - bleg_contact_host
+  - bleg_contact_port
+  - bleg_contact_user
+  - bleg_contact_displayname
+  - bleg_contact_params
+  - bleg_contact_uri_params
+
+note: bleg_contact_params and bleg_contact_uri_params
+      are strings with semicolon-separated params list.
+
+not specified or empty after placeholders substitution parts will be left untouched.
 
 Response code translations
 -----------------------

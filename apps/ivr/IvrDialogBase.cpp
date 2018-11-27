@@ -6,8 +6,8 @@
 
 #include "IvrSipDialog.h"
 #include "IvrSipRequest.h"
+#include "IvrEvent.h"
 #include "AmMediaProcessor.h"
-
 
 /** \brief python wrapper of IvrDialog, the base class for python IVR sessions */
 typedef struct {
@@ -375,8 +375,9 @@ static PyObject* IvrDialogBase_setTimer(IvrDialogBase* self, PyObject* args)
 {
   assert(self->p_dlg);
     
-  int id = 0, interval = 0;
-  if(!PyArg_ParseTuple(args,"ii",&id, &interval))
+  int id = 0;
+  double interval = 0.0;
+  if(!PyArg_ParseTuple(args, "id", &id, &interval))
     return NULL;
     
   if (id <= 0) {
@@ -443,7 +444,7 @@ IvrDialogBase_redirect(IvrDialogBase *self, PyObject* args)
   if(!PyArg_ParseTuple(args,"s",&refer_to))
     return NULL;
     
-  if(self->p_dlg->transfer(refer_to)){
+  if(self->p_dlg->dlg->transfer(refer_to)){
     ERROR("redirect failed\n");
     return NULL;
   }
@@ -459,11 +460,13 @@ IvrDialogBase_refer(IvrDialogBase *self, PyObject* args)
   assert(self->p_dlg);
     
   char* refer_to=0;
-  int expires;
-  if(!PyArg_ParseTuple(args,"si",&refer_to, &expires))
+  int expires = -1;
+  char * referred_by = "";
+  char * extrahdrs = "";
+  if(!PyArg_ParseTuple(args, "s|iss", &refer_to, &expires, &referred_by, &extrahdrs))
     return NULL;
     
-  if(self->p_dlg->refer(refer_to, expires)){
+  if(self->p_dlg->dlg->refer(refer_to, expires, referred_by, extrahdrs)){
     ERROR("REFER failed\n");
     return NULL;
   }
@@ -471,6 +474,37 @@ IvrDialogBase_refer(IvrDialogBase *self, PyObject* args)
   Py_INCREF(Py_None);
   return Py_None;
     
+}
+
+// Send SIP request
+static PyObject* IvrDialogBase_sendRequest(IvrDialogBase* self, PyObject* args)
+{
+   char* method=0;
+   char* hdrs=0;
+
+   if(!PyArg_ParseTuple(args, "ss", &method, &hdrs))
+     return NULL;
+
+   assert(self->p_dlg);
+   self->p_dlg->dlg->sendRequest(method, NULL, hdrs);
+   Py_INCREF(Py_None);
+   return Py_None;
+}
+
+// Send SIP reply
+static PyObject* IvrDialogBase_sendReply(IvrDialogBase* self, PyObject* args)
+{
+   int code;
+   char* reason=0;
+   char* hdrs=0;
+
+   if(!PyArg_ParseTuple(args, "iss", &code, &reason, &hdrs))
+     return NULL;
+
+   assert(self->p_dlg);
+   self->p_dlg->dlg->reply(self->p_dlg->mReq, code, reason, NULL, hdrs, 0);
+   Py_INCREF(Py_None);
+   return Py_None;
 }
 
 static PyObject* 
@@ -484,10 +518,61 @@ IvrDialogBase_getAppParam(IvrDialogBase *self, PyObject* args)
   return PyString_FromString(app_param.c_str());
 }
 
+static PyObject*
+getSessionParams_helper(AmArg& p)
+{
+  if(isArgInt(p) || isArgLongLong(p)) {
+    return PyInt_FromLong(p.asLong());
+  } else if(isArgDouble(p)) {
+    return PyFloat_FromDouble(p.asDouble());
+  } else if(isArgCStr(p)) {
+    return PyString_FromString(p.asCStr());
+  } else {
+    return NULL;
+  }
+}
+
+static PyObject*
+IvrDialogBase_getSessionParams(IvrDialogBase *self, PyObject*)
+{
+  if(!self->p_dlg->session_params) {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+  AmArg& sp = *(self->p_dlg->session_params);
+  if(isArgStruct(sp)) {
+    AmArg::ValueStruct* vs = sp.asStruct();
+    AmArg::ValueStruct::iterator it = vs->begin();
+    PyObject* output = PyDict_New(); //New
+    PyObject *k, *v;
+    for(;it != vs->end(); ++it) {
+      if(!(v = getSessionParams_helper(it->second))) continue;
+
+      k = PyString_FromString(it->first.c_str());
+      PyDict_SetItem(output, k, v);
+      Py_DECREF(v);
+      Py_DECREF(k);
+    }
+    return output;
+  } else if (isArgArray(sp)) {
+    size_t i;
+    PyObject* pyList = PyList_New(0);
+    PyObject* v;
+    for(i = 0; i < sp.size(); ++i) {
+      if(!(v = getSessionParams_helper(sp[i]))) continue;
+      PyList_Append(pyList, v);
+      Py_DECREF(v);
+    }
+    return pyList;
+  } else {
+    // Should not happen, see IvrUAC_dialout()
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+}
 
 static PyMethodDef IvrDialogBase_methods[] = {
-    
-
+  
   // Event handlers
 
   {"onRtpTimeout", (PyCFunction)IvrDialogBase_onRtpTimeout, METH_NOARGS,
@@ -523,6 +608,14 @@ static PyMethodDef IvrDialogBase_methods[] = {
   {"refer", (PyCFunction)IvrDialogBase_refer, METH_VARARGS,
    "Refers the remote party to some third party."
   },   
+  // Send SIP request
+  {"sendRequest", (PyCFunction)IvrDialogBase_sendRequest, METH_VARARGS,
+    "send sip request"
+  },
+  // Send SIP reply
+  {"sendReply", (PyCFunction)IvrDialogBase_sendReply, METH_VARARGS,
+    "send sip reply"
+  },
   {"dropSession", (PyCFunction)IvrDialogBase_dropSession, METH_NOARGS,
    "Drop the session and forget it without replying"
   },
@@ -598,6 +691,11 @@ static PyMethodDef IvrDialogBase_methods[] = {
   // App params
   {"getAppParam", (PyCFunction)IvrDialogBase_getAppParam, METH_VARARGS,
    "retrieves an application parameter"
+  },
+
+  // Session params - only present in case of UAC session
+  {"getSessionParams", (PyCFunction)IvrDialogBase_getSessionParams, METH_NOARGS,
+    "retrieves the session parameters"
   },
 
   {NULL}  /* Sentinel */

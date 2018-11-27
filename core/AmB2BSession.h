@@ -176,9 +176,10 @@ private:
   /** Requests received for relaying */
   TransMap recvd_req;
 
-  /** CSeq of the INVITE that established this call */
+  /** CSeq and Max-Forwards of the INVITE that established this call */
   unsigned int est_invite_cseq;
   unsigned int est_invite_other_cseq;
+  unsigned int est_invite_max_forwards;
 
   /** SUBSCRIBE/NOTIFY handling */
   AmSipSubscription* subs;
@@ -251,8 +252,12 @@ private:
   /** B2BEvent handler */
   virtual void onB2BEvent(B2BEvent* ev);
 
-  /** handle BYE on other leg */
-  virtual void onOtherBye(const AmSipRequest& req);
+  /** handle BYE on other leg 
+      @return whether BYE is processed and should not be relayed via SIP
+      if true, the application must have handled the BYE
+      (i.e. sent 200 OK to the BYE using relayError())
+   */
+  virtual bool onOtherBye(const AmSipRequest& req);
 
   /** 
    * Reply received from other leg has been replied 

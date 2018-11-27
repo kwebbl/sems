@@ -119,9 +119,10 @@ void AmContentType::resetBoundary()
   while (it != params.end()) {
     Params::iterator l_it = it;
     it++;
-    if ((*l_it)->type == Param::BOUNDARY)
+    if ((*l_it)->type == Param::BOUNDARY) {
       delete *l_it;
       params.erase(l_it);
+    }
   }
 
   params.push_back(new Param(BOUNDARY_str, int2hex(get_random())));
@@ -421,6 +422,7 @@ int AmMimeBody::findNextBoundary(unsigned char** beg, unsigned char** end)
 	break;
       case CR:
 	st = B_CR;
+	*beg = c;
 	break;
       default:
 	st = B_START;
