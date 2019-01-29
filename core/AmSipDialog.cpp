@@ -20,8 +20,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
@@ -107,7 +107,7 @@ bool AmSipDialog::onRxReqSanity(const AmSipRequest& req)
 
     if (pending) {
       reply_error(req, 491, SIP_REPLY_PENDING,
-		  SIP_HDR_COLSP(SIP_HDR_RETRY_AFTER) 
+		  SIP_HDR_COLSP(SIP_HDR_RETRY_AFTER)
 		  + int2str(get_random() % 10) + CRLF);
       return false;
     }
@@ -258,7 +258,7 @@ int AmSipDialog::onTxReply(const AmSipRequest& req, AmSipReply& reply, int& flag
   case Cancelling:
     if( (reply.cseq_method == SIP_METH_INVITE) &&
 	(reply.code < 200) ) {
-      // refuse local provisional replies 
+      // refuse local provisional replies
       // when state is Cancelling
       ERROR("refuse local provisional replies when state is Cancelling\n");
       return -1;
@@ -282,7 +282,7 @@ int AmSipDialog::onTxReply(const AmSipRequest& req, AmSipReply& reply, int& flag
   case Disconnecting:
     if(reply.cseq_method == SIP_METH_BYE){
 
-      // Only reason for refusing a BYE: 
+      // Only reason for refusing a BYE:
       //  authentication (NYI at this place)
       // Also: we should not send provisionnal replies to a BYE
       if(reply.code >= 200)
@@ -300,9 +300,9 @@ int AmSipDialog::onTxReply(const AmSipRequest& req, AmSipReply& reply, int& flag
 
   // target-refresh requests and their replies need to contain Contact (1xx
   // replies only those establishing dialog, take care about them?)
-  if(reply.cseq_method != SIP_METH_INVITE && 
+  if(reply.cseq_method != SIP_METH_INVITE &&
      reply.cseq_method != SIP_METH_UPDATE) {
-    
+
     flags |= SIP_FLAGS_NOCONTACT;
   }
 
@@ -354,7 +354,7 @@ bool AmSipDialog::onRxReplySanity(const AmSipReply& reply)
 bool AmSipDialog::onRxReplyStatus(const AmSipReply& reply)
 {
   // rfc3261 12.1
-  // Dialog established only by 101-199 or 2xx 
+  // Dialog established only by 101-199 or 2xx
   // responses to INVITE
 
   if(reply.cseq_method == SIP_METH_INVITE) {
@@ -366,8 +366,7 @@ bool AmSipDialog::onRxReplyStatus(const AmSipReply& reply)
       if(reply.code < 200){
 	// Do not go to Early state if To tag can still change
 	// Otherwise reply check will fail
-	if (((reply.code == 100) ||
-	     ((reply.code >= 180) && (reply.code <= 183)))
+	if (((reply.code == 100) || (reply.code == 181) || (reply.code == 182))
 	    || reply.to_tag.empty())
 	  setStatus(Proceeding);
 	else {
@@ -473,7 +472,7 @@ bool AmSipDialog::onRxReplyStatus(const AmSipReply& reply)
 
   return cont && rel100.onReplyIn(reply);
 }
-  
+
 void AmSipDialog::uasTimeout(AmSipTimeoutEvent* to_ev)
 {
   assert(to_ev);
@@ -496,7 +495,7 @@ void AmSipDialog::uasTimeout(AmSipTimeoutEvent* to_ev)
   default:
     break;
   };
-  
+
   to_ev->processed = true;
 }
 
@@ -589,10 +588,10 @@ int AmSipDialog::bye(const string& hdrs, int flags)
         DBG("bye(): we are not connected "
 	    "(status=%s). do nothing!\n",getStatusStr());
 	return 0;
-    }	
+    }
 }
 
-int AmSipDialog::reinvite(const string& hdrs,  
+int AmSipDialog::reinvite(const string& hdrs,
 			  const AmMimeBody* body,
 			  int flags)
 {
@@ -607,7 +606,7 @@ int AmSipDialog::reinvite(const string& hdrs,
   return -1;
 }
 
-int AmSipDialog::invite(const string& hdrs,  
+int AmSipDialog::invite(const string& hdrs,
 			const AmMimeBody* body)
 {
   if(getStatus() == Disconnected) {
@@ -624,7 +623,7 @@ int AmSipDialog::invite(const string& hdrs,
   return -1;
 }
 
-int AmSipDialog::update(const AmMimeBody* body, 
+int AmSipDialog::update(const AmMimeBody* body,
                         const string &hdrs)
 {
   switch(getStatus()){
@@ -653,7 +652,7 @@ int AmSipDialog::refer(const string& refer_to,
 {
   if(getStatus() == Connected) {
     string hdrs = SIP_HDR_COLSP(SIP_HDR_REFER_TO) + refer_to + CRLF;
-    if (expires>=0) 
+    if (expires>=0)
       hdrs+= SIP_HDR_COLSP(SIP_HDR_EXPIRES) + int2str(expires) + CRLF;
     hdrs+= extrahdrs;
     if (!referred_by.empty())
@@ -666,7 +665,7 @@ int AmSipDialog::refer(const string& refer_to,
 	"(status=%s). do nothing!\n",getStatusStr());
 
     return 0;
-  }	
+  }
 }
 
 int AmSipDialog::info(const string& hdrs, const AmMimeBody* body)
@@ -678,7 +677,7 @@ int AmSipDialog::info(const string& hdrs, const AmMimeBody* body)
 	"(status=%s). do nothing!\n", getStatusStr());
     return 0;
   }
-}    
+}
 
 // proprietary
 int AmSipDialog::transfer(const string& target)
@@ -686,40 +685,40 @@ int AmSipDialog::transfer(const string& target)
   if(getStatus() == Connected){
 
     setStatus(Disconnecting);
-		
+
     string      hdrs = "";
     AmSipDialog tmp_d(*this);
-		
+
     tmp_d.route = "";
     // TODO!!!
-    //tmp_d.contact_uri = SIP_HDR_COLSP(SIP_HDR_CONTACT) 
+    //tmp_d.contact_uri = SIP_HDR_COLSP(SIP_HDR_CONTACT)
     //  "<" + tmp_d.remote_uri + ">" CRLF;
     tmp_d.remote_uri = target;
-		
+
     string r_set;
     if(!route.empty()){
-			
+
       hdrs = PARAM_HDR ": " "Transfer-RR=\"" + route + "\""+CRLF;
     }
-				
+
     int ret = tmp_d.sendRequest("REFER",NULL,hdrs);
     if(!ret){
       uac_trans.insert(tmp_d.uac_trans.begin(),
 		       tmp_d.uac_trans.end());
       cseq = tmp_d.cseq;
     }
-		
+
     return ret;
   }
-	
+
   DBG("transfer(): we are not connected "
       "(status=%i). do nothing!\n",status);
-    
+
   return 0;
 }
 
 int AmSipDialog::prack(const AmSipReply &reply1xx,
-                       const AmMimeBody* body, 
+                       const AmMimeBody* body,
                        const string &hdrs)
 {
   switch(getStatus()) {
@@ -738,9 +737,9 @@ int AmSipDialog::prack(const AmSipReply &reply1xx,
       return -1;
   }
   string h = hdrs +
-          SIP_HDR_COLSP(SIP_HDR_RACK) + 
-          int2str(reply1xx.rseq) + " " + 
-          int2str(reply1xx.cseq) + " " + 
+          SIP_HDR_COLSP(SIP_HDR_RACK) +
+          int2str(reply1xx.rseq) + " " +
+          int2str(reply1xx.cseq) + " " +
           reply1xx.cseq_method + CRLF;
   return sendRequest(SIP_METH_PRACK, body, h);
 }
@@ -763,7 +762,7 @@ int AmSipDialog::cancel()
 	  }
 	}
     }
-    
+
     ERROR("could not find INVITE transaction to cancel\n");
     return -1;
 }
@@ -792,7 +791,7 @@ int AmSipDialog::cancel(const string& hdrs)
 }
 
 int AmSipDialog::drop()
-{	
+{
   setStatus(Disconnected);
   return 1;
 }
@@ -826,15 +825,15 @@ int AmSipDialog::send_200_ack(unsigned int inv_cseq,
     req.from += ";tag=" + ext_local_tag;
   else if(!local_tag.empty())
     req.from += ";tag=" + local_tag;
-    
+
   req.to = SIP_HDR_COLSP(SIP_HDR_TO) + remote_party;
-  if(!remote_tag.empty()) 
+  if(!remote_tag.empty())
     req.to += ";tag=" + remote_tag;
-    
+
   req.cseq = inv_cseq;// should be the same as the INVITE
   req.callid = callid;
   req.contact = getContactHdr();
-    
+
   req.route = getRoute();
 
   req.max_forwards = inv_it->second.max_forwards;
@@ -852,7 +851,7 @@ int AmSipDialog::send_200_ack(unsigned int inv_cseq,
   }
 
   int res = SipCtrlInterface::send(req, local_tag,
-				   remote_tag.empty() || !next_hop_1st_req ? 
+				   remote_tag.empty() || !next_hop_1st_req ?
 				   next_hop : "",
 				   outbound_interface, 0, logger);
   if (res)
