@@ -78,6 +78,12 @@ string       AmConfig::DaemonGid               = DEFAULT_DAEMON_GID;
 
 unsigned int AmConfig::MaxShutdownTime         = DEFAULT_MAX_SHUTDOWN_TIME;
 
+unsigned int AmConfig::RtpMuxPort              = 0;
+string       AmConfig::RtpMuxIP;
+string       AmConfig::RtpMuxOutInterface;
+unsigned int AmConfig::RtpMuxMTUThreshold      = DEFAULT_MUX_MTU_THRESHOLD;
+unsigned int AmConfig::RtpMuxMaxFrameAgeMs     = DEFAULT_MUX_MAX_FRAME_AGE_MS;
+
 int          AmConfig::SessionProcessorThreads = NUM_SESSION_PROCESSORS;
 int          AmConfig::MediaProcessorThreads   = NUM_MEDIA_PROCESSORS;
 int          AmConfig::RTPReceiverThreads      = NUM_RTP_RECEIVERS;
@@ -170,9 +176,9 @@ AmConfig::SIP_interface::SIP_interface()
   : IP_interface(),
     LocalPort(5060),
     SigSockOpts(0),
-    RtpInterface(-1),
     tcp_connect_timeout(DEFAULT_TCP_CONNECT_TIMEOUT),
-    tcp_idle_timeout(DEFAULT_TCP_IDLE_TIMEOUT)
+    tcp_idle_timeout(DEFAULT_TCP_IDLE_TIMEOUT),
+    RtpInterface(-1)
 {
 }
 
@@ -528,6 +534,17 @@ int AmConfig::readConfiguration()
 
   MaxShutdownTime = cfg.getParameterInt("max_shutdown_time",
 					DEFAULT_MAX_SHUTDOWN_TIME);
+
+  RtpMuxPort = cfg.getParameterInt("rtp_mux_port", 0);
+  if (RtpMuxPort) {
+    INFO("Enabling RTP mux port %u\n", RtpMuxPort);
+    RtpMuxIP = cfg.getParameter("rtp_mux_ip");
+  } else {
+    INFO("Not Enabling RTP mux port.\n");
+  }
+  RtpMuxOutInterface = cfg.getParameter("rtp_mux_out_interface");
+  RtpMuxMTUThreshold = cfg.getParameterInt("rtp_mux_mtu_threshold", DEFAULT_MUX_MTU_THRESHOLD);
+  RtpMuxMaxFrameAgeMs = cfg.getParameterInt("rtp_mux_max_frame_age_ms", DEFAULT_MUX_MAX_FRAME_AGE_MS);
 
   if(cfg.hasParameter("session_processor_threads")){
 #ifdef SESSION_THREADPOOL
@@ -966,6 +983,9 @@ static bool fillSysIntfList()
       continue;
 
     if(p_if->ifa_addr->sa_family == AF_INET6) {
+#ifndef SUPPORT_IPV6
+	continue;
+#endif
       
       struct sockaddr_in6 *addr = (struct sockaddr_in6 *)p_if->ifa_addr;
       if(IN6_IS_ADDR_LINKLOCAL(&addr->sin6_addr)){
@@ -1005,7 +1025,7 @@ static bool fillSysIntfList()
       intf_it->flags = p_if->ifa_flags;
 
       struct ifreq ifr;
-      strncpy(ifr.ifr_name,p_if->ifa_name,IFNAMSIZ);
+      strncpy(ifr.ifr_name,p_if->ifa_name,sizeof(ifr.ifr_name)-1);
 
       if (ioctl(fd, SIOCGIFMTU, &ifr) < 0 ) {
 	ERROR("ioctl: %s",strerror(errno));

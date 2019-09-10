@@ -10,18 +10,13 @@ codec.
 How to build G.729 codec wrapper
 -----------------------------
 
- 1. Get and install Belledonne Communications [bcg729
+ 1. Install Belledonne Communications [bcg729
     codec](https://github.com/BelledonneCommunications/bcg729).
 
- 2. Build bcg729 library:
+    Debian users please refer to [Debian Bugzilla
+    ticket](https://bugs.debian.org/785480) related to bcg729 inclusion.
 
-```
-   configure
-   make
-   make install
-```
-
- 3. Build sems:
+ 2. Build sems:
 
 ```
    cmake -DSEMS_USE_G729=yes
@@ -41,7 +36,6 @@ codec (patents) licensing.
 
    * Copyright (c) 2007, Vadim Lebedev
    * Copyright (c) 2010, Stefan Sayer
-   * Copyright (c) 2012, Peter Lemenkov
 
  2. Belledonne Communications bcg729 codec is licensed under GPLv2 or later.
 

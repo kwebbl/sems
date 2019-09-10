@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.4)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
 
 IF(COMMAND cmake_policy)
 	# Don't do automatic escaping of variables
@@ -34,11 +34,23 @@ ADD_DEFINITIONS(-DSEMS_APP_NAME=\\\"sems\\\")
 
 MESSAGE(STATUS "Configuring ${CMAKE_PROJECT_NAME} v. ${SEMS_VERSION}")
 
+IF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
+	message(FATAL_ERROR "In-source builds are not allowed.
+CMake would overwrite all makefiles distributed with SEMS.
+Please create a directory and run cmake from there, passing the path
+to this source directory as the last argument.
+This process created the file `CMakeCache.txt' and the directory `CMakeFiles'.
+Please delete them.")
+ENDIF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
+
+OPTION(SEMS_USE_OPUS          "Build with Opus" OFF)
 OPTION(SEMS_USE_SPANDSP       "Build with spandsp" OFF)
 OPTION(SEMS_USE_LIBSAMPLERATE "Build with libsamplerate" OFF)
 OPTION(SEMS_USE_ZRTP          "Build with ZRTP" OFF)
-OPTION(SEMS_USE_MP3           "Build with Lame MP3" OFF)
+OPTION(SEMS_USE_MP3           "Build with MP3" OFF)
 OPTION(SEMS_USE_ILBC          "Build with iLBC library (fallback to bundled)" ON)
+OPTION(SEMS_USE_G729          "Build with bcg729 library" OFF)
+OPTION(SEMS_USE_CODEC2        "Build with codec2 library" OFF)
 OPTION(SEMS_USE_TTS           "Build with Text-to-speech support (requires Flite)" OFF)
 OPTION(SEMS_USE_OPENSSL       "Build with OpenSSL" OFF)
 OPTION(SEMS_USE_MONITORING    "Build with monitoring support" OFF)
@@ -76,6 +88,11 @@ IF (NOT SEMS_EXEC_PREFIX)
 ENDIF (NOT SEMS_EXEC_PREFIX)
 MESSAGE(STATUS "SEMS exec prefix was set to: ${SEMS_EXEC_PREFIX}")
 
+IF (NOT SEMS_RUNDIR_PREFIX)
+	SET(SEMS_RUNDIR_PREFIX "/var/local/run")
+ENDIF (NOT SEMS_RUNDIR_PREFIX)
+MESSAGE(STATUS "SEMS run dir prefix was set to: ${SEMS_RUNDIR_PREFIX}")
+
 IF (NOT SEMS_LIBDIR)
 	SET(SEMS_LIBDIR "lib")
 ENDIF (NOT SEMS_LIBDIR)
@@ -102,6 +119,14 @@ ELSE(SEMS_USE_SPANDSP)
 	MESSAGE(STATUS "Using spandsp: NO (default)")
 ENDIF(SEMS_USE_SPANDSP)
 
+# compile with Opus codec?
+IF(SEMS_USE_OPUS)
+	FIND_PACKAGE(Opus REQUIRED)
+	MESSAGE(STATUS "Using Opus: YES")
+ELSE(SEMS_USE_OPUS)
+	MESSAGE(STATUS "Using Opus: NO (default)")
+ENDIF(SEMS_USE_OPUS)
+
 # compile with sample rate conversion from secret rabbit code?
 # (see http://www.mega-nerd.com/SRC/)
 IF(SEMS_USE_LIBSAMPLERATE)
@@ -110,13 +135,14 @@ IF(SEMS_USE_LIBSAMPLERATE)
 	MESSAGE(STATUS "Using libsamplerate: YES")
 ELSE(SEMS_USE_LIBSAMPLERATE)
 	MESSAGE(STATUS "Using libsamplerate: NO (default)")
+	ADD_DEFINITIONS(-DUSE_INTERNAL_RESAMPLER)
 ENDIF(SEMS_USE_LIBSAMPLERATE)
 
 # ZRTP support? (see zfoneproject.com)
 IF(SEMS_USE_ZRTP)
 	FIND_PACKAGE(Libzrtp REQUIRED)
 	MESSAGE(STATUS "Using libzrtp: YES")
-	ADD_DEFINITIONS(-DWITH_ZRTP -DBUILD_ZRTP_MUTEXES -DBUILD_DEFAULT_CACHE -DBUILD_DEFAULT_TIMER -DUNIX -DBUILD_ZRTP_MUTEXES)
+	ADD_DEFINITIONS(-DWITH_ZRTP -DBUILD_DEFAULT_CACHE -DBUILD_DEFAULT_TIMER -DUNIX -DBUILD_ZRTP_MUTEXES)
 ELSE(SEMS_USE_ZRTP)
 	MESSAGE(STATUS "Using libzrtp: NO (default)")
 ENDIF(SEMS_USE_ZRTP)
@@ -124,9 +150,18 @@ ENDIF(SEMS_USE_ZRTP)
 # Lame MP3 support
 IF(SEMS_USE_MP3)
 	FIND_PACKAGE(Lame REQUIRED)
-	MESSAGE(STATUS "Using lame mp3: YES")
+	IF(LAME_FOUND)
+		MESSAGE(STATUS "Using mp3 encoding (LAME library): YES")
+		FIND_PACKAGE(Mpg123)
+		IF(MPG123_FOUND)
+			ADD_DEFINITIONS(-DWITH_MPG123DECODER)
+			MESSAGE(STATUS "Using mp3 decoding (mpg123 library): YES")
+		ELSE(MPG123_FOUND)
+			MESSAGE(STATUS "Using mp3 decoding (mpg123 library): NO")
+		ENDIF(MPG123_FOUND)
+	ENDIF(LAME_FOUND)
 ELSE(SEMS_USE_MP3)
-	MESSAGE(STATUS "Using lame mp3: NO (default)")
+	MESSAGE(STATUS "Using mp3: NO (default)")
 ENDIF(SEMS_USE_MP3)
 
 IF(SEMS_USE_ILBC)
@@ -137,8 +172,22 @@ IF(SEMS_USE_ILBC)
 		MESSAGE(STATUS "Using iLBC library: YES (bundled, default)")
 	ENDIF(ILBC_FOUND)
 ELSE(SEMS_USE_ILBC)
-	MESSAGE(STATUS "Uusing iLBC library: NO")
+	MESSAGE(STATUS "Using iLBC library: NO")
 ENDIF(SEMS_USE_ILBC)
+
+IF(SEMS_USE_G729)
+	FIND_PACKAGE(Bcg729)
+	MESSAGE(STATUS "Using bcg729 library: YES")
+ELSE(SEMS_USE_G729)
+	MESSAGE(STATUS "Using bcg729 library: NO (default)")
+ENDIF(SEMS_USE_G729)
+
+IF(SEMS_USE_CODEC2)
+	FIND_PACKAGE(Codec2)
+	MESSAGE(STATUS "Using codec2 library: YES")
+ELSE(SEMS_USE_CODEC2)
+	MESSAGE(STATUS "Using codec2 library: NO (default)")
+ENDIF(SEMS_USE_CODEC2)
 
 # build in support for monitoring?
 IF(SEMS_USE_MONITORING)
@@ -172,7 +221,7 @@ ELSE(SPEEX_FOUND)
 ENDIF(SPEEX_FOUND)
 
 IF(SEMS_USE_OPENSSL)
-	FIND_PACKAGE(OpenSSL REQUIRED QUIETLY)
+	FIND_PACKAGE(OpenSSL REQUIRED QUIET)
 	MESSAGE(STATUS "Found OpenSSL includes:	${OPENSSL_INCLUDE_DIR}/openssl/ssl.h")
 	MESSAGE(STATUS "Found OpenSSL library: ${OPENSSL_LIBRARIES}")
 	MESSAGE(STATUS "Using OpenSSL: YES")
@@ -244,11 +293,19 @@ ELSE(RTMP_FOUND)
 	MESSAGE(STATUS "Using librtmp: NO")
 ENDIF(RTMP_FOUND)
 
+# Redis support
+FIND_PACKAGE(Hiredis)
+IF(HIREDIS_FOUND)
+	MESSAGE(STATUS "Using hiredis: YES")
+ELSE(HIREDIS_FOUND)
+	MESSAGE(STATUS "Using hiredis: NO")
+ENDIF(HIREDIS_FOUND)
+
 IF(NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
 	# Check for res_search in -lresolv
-	include(${CMAKE_SOURCE_DIR}/cmake/CheckSymbolExists.cmake)
+	include(CheckSymbolExists)
 	SET(CMAKE_REQUIRED_LIBRARIES resolv)
-	CHECK_SYMBOL_EXISTS(res_search HAVE_RES_SEARCH netinet/in.h resolv.h)
+	CHECK_SYMBOL_EXISTS(res_search "netinet/in.h;resolv.h" HAVE_RES_SEARCH)
 	MESSAGE(STATUS "Have res_search: ${HAVE_RES_SEARCH}")
 ENDIF(NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
 
@@ -260,14 +317,12 @@ IF(${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
 	LINK_DIRECTORIES(/usr/local/lib)
 ENDIF(${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
 
-CONFIGURE_FILE( ${SEMS_SOURCE_DIR}/core/sems.h.cmake ${SEMS_SOURCE_DIR}/core/sems.h )
-
 IF(CMAKE_COMPILER_IS_GNUCC)
 	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_THREAD_SAFE -D_REENTRANT -Wall -O2")
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
 IF(CMAKE_COMPILER_IS_GNUCXX)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_THREAD_SAFE -D_REENTRANT -Wall -Wno-reorder -fPIC -std=c++11 -g -O2")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_THREAD_SAFE -D_REENTRANT -Wall -Werror=stringop-truncation -std=c++11 -O2")
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
@@ -313,8 +368,10 @@ ENDIF(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
 
-ADD_SUBDIRECTORY (core)
+enable_testing()
+
 ADD_SUBDIRECTORY (apps)
+ADD_SUBDIRECTORY (core)
 ADD_SUBDIRECTORY (tools)
 
 #SET_DIRECTORY_PROPERTIES(ADDITIONAL_MAKE_CLEAN_FILES *~)

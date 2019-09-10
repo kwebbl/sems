@@ -174,17 +174,18 @@ void AudioStreamData::initialize(AmB2BSession *session)
   enable_dtmf_transcoding = session->getEnableDtmfTranscoding();
   session->getLowFiPLs(lowfi_payloads);
   stream->setLocalIP(session->localMediaIP());
+  stream->setRtpMuxRemote(session->getRtpMuxRemoteIP(), session->getRtpMuxRemotePort());
 }
 
 AudioStreamData::AudioStreamData(AmB2BSession *session):
   in(NULL), initialized(false),
+  force_symmetric_rtp(false), enable_dtmf_transcoding(false),
   dtmf_detector(NULL), dtmf_queue(NULL),
-  relay_enabled(false), relay_port(0),
-  outgoing_payload(UNDEFINED_PAYLOAD),
-  incoming_payload(UNDEFINED_PAYLOAD),
-  force_symmetric_rtp(false),
-  enable_dtmf_transcoding(false),
-  muted(false), relay_paused(false), receiving(true)
+  relay_enabled(false),
+  relay_port(0),
+  relay_paused(false),
+  muted(false), receiving(true),
+  outgoing_payload(UNDEFINED_PAYLOAD), incoming_payload(UNDEFINED_PAYLOAD)
 {
   if (session) initialize(session);
   else stream = NULL; // not initialized yet
@@ -501,11 +502,12 @@ AmB2BMedia::RelayStreamPair::RelayStreamPair(AmB2BSession *_a, AmB2BSession *_b)
 }
 
 AmB2BMedia::AmB2BMedia(AmB2BSession *_a, AmB2BSession *_b): 
-  ref_cnt(0), // everybody who wants to use must add one reference itselves
-  a(_a), b(_b),
+  a(_a),
+  b(_b),
   callgroup(AmSession::getNewId()),
   have_a_leg_local_sdp(false), have_a_leg_remote_sdp(false),
   have_b_leg_local_sdp(false), have_b_leg_remote_sdp(false),
+  ref_cnt(0), // everybody who wants to use must add one reference itselves
   playout_type(ADAPTIVE_PLAYOUT),
   //playout_type(SIMPLE_PLAYOUT),
   a_leg_muted(false), b_leg_muted(false),
@@ -666,9 +668,9 @@ void AmB2BMedia::clearAudio(bool a_leg)
 
   for (RelayStreamIterator j = relay_streams.begin(); j != relay_streams.end(); ++j) {
     if ((*j)->a.hasLocalSocket())
-      AmRtpReceiver::instance()->removeStream((*j)->a.getLocalSocket());
+      AmRtpReceiver::instance()->removeStream((*j)->a.getLocalSocket(), (*j)->a.getLocalPort());
     if ((*j)->b.hasLocalSocket())
-      AmRtpReceiver::instance()->removeStream((*j)->b.getLocalSocket());
+      AmRtpReceiver::instance()->removeStream((*j)->b.getLocalSocket(), (*j)->b.getLocalPort());
   }
 
   // forget sessions to avoid using them once clearAudio is called
