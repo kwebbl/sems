@@ -82,7 +82,7 @@ USE_INTERNAL_RESAMPLER = yes
 # exclude some modules from compilation?
 # e.g. python modules:
 
-exclude_core_modules = g729 silk
+exclude_core_modules = g729 silk codec2
 #exclude_app_modules = py_sems ivr mailbox pin_collect conf_auth mp3 examples
 
 # build in support for monitoring?
@@ -168,7 +168,7 @@ CXX = g++
 CC = gcc
 LD = $(CC)
 
-CXXFLAGS += -Wall -Wno-reorder -Wno-unused -fPIC -std=c++11 -g $(EXTRA_CXXFLAGS) 
+CXXFLAGS += -Wall -Wno-unused -fPIC -std=c++11 -g $(EXTRA_CXXFLAGS)
 CFLAGS   += -Wall -fPIC -g $(EXTRA_CFLAGS)
 
 # only optimize if releasing, as it slows down the build process
@@ -183,7 +183,6 @@ endif
 
 ifdef WITH_ZRTP
 CPPFLAGS += -DWITH_ZRTP \
-	    -DBUILD_ZRTP_MUTEXES \
 	    -DBUILD_DEFAULT_CACHE -DBUILD_DEFAULT_TIMER -DUNIX -DBUILD_ZRTP_MUTEXES \
 	    -I/usr/local/include/zrtp 
 endif

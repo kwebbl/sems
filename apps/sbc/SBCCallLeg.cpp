@@ -121,12 +121,12 @@ SBCCallLeg::SBCCallLeg(const SBCCallProfile& call_profile, AmSipDialog* p_dlg,
 		       AmSipSubscription* p_subs)
   : CallLeg(p_dlg,p_subs),
     m_state(BB_Init),
-    auth(NULL), auth_di(NULL),
+    cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_START), ext_cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_END + 1),
+    auth(NULL),
+    auth_di(NULL),
     call_profile(call_profile),
-    cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_START),
-    ext_cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_END + 1),
-    cc_started(false),
-    logger(NULL)
+    logger(NULL),
+    cc_started(false)
 {
 #ifdef WITH_ZRTP
   enable_zrtp = false;
@@ -146,17 +146,22 @@ SBCCallLeg::SBCCallLeg(const SBCCallProfile& call_profile, AmSipDialog* p_dlg,
 				     1000);
     rtp_relay_rate_limit.reset(limit);
   }
+
+  // set RTP MUX setting from profile
+  remote_rtp_mux_ip = call_profile.a_remote_rtp_mux_ip;
+  remote_rtp_mux_port = call_profile.a_remote_rtp_mux_port;
+
 }
 
 // B leg constructor (from SBCCalleeSession)
 SBCCallLeg::SBCCallLeg(SBCCallLeg* caller, AmSipDialog* p_dlg,
 		       AmSipSubscription* p_subs)
-  : auth(NULL), auth_di(NULL),
+  : CallLeg(caller,p_dlg,p_subs), ext_cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_END + 1),
+    auth(NULL),
+    auth_di(NULL),
     call_profile(caller->getCallProfile()),
-    CallLeg(caller,p_dlg,p_subs),
-    ext_cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_END + 1),
-    cc_started(false),
-    logger(NULL)
+    logger(NULL),
+    cc_started(false)
 {
 #ifdef WITH_ZRTP
   enable_zrtp = false;
@@ -184,6 +189,10 @@ SBCCallLeg::SBCCallLeg(SBCCallLeg* caller, AmSipDialog* p_dlg,
     rtp_relay_rate_limit.reset(new RateLimit(*caller->rtp_relay_rate_limit.get()));
   }
 
+  // set RTP MUX setting from profile
+  remote_rtp_mux_ip = call_profile.b_remote_rtp_mux_ip;
+  remote_rtp_mux_port = call_profile.b_remote_rtp_mux_port;
+
   // CC interfaces and variables should be already "evaluated" by A leg, we just
   // need to load the DI interfaces for us (later they will be initialized with
   // original INVITE so it must be done in A leg's thread!)
@@ -204,10 +213,10 @@ SBCCallLeg::SBCCallLeg(SBCCallLeg* caller, AmSipDialog* p_dlg,
 SBCCallLeg::SBCCallLeg(AmSipDialog* p_dlg, AmSipSubscription* p_subs)
   : CallLeg(p_dlg,p_subs),
     m_state(BB_Init),
-    auth(NULL),  auth_di(NULL),
-    cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_START),
-    cc_started(false),
-    logger(NULL)
+    cc_timer_id(SBC_TIMER_ID_CALL_TIMERS_START), auth(NULL),
+    auth_di(NULL),
+    logger(NULL),
+    cc_started(false)
 {
 #ifdef WITH_ZRTP
   enable_zrtp = false;
@@ -874,9 +883,7 @@ void SBCCallLeg::onInvite(const AmSipRequest& req)
   call_profile.sst_enabled = ctx.replaceParameters(call_profile.sst_enabled, 
 						   "enable_session_timer", req);
 
-  if ((call_profile.sst_aleg_enabled == "yes") &&
-      (call_profile.sst_enabled == "yes")) {
-
+  if ( call_profile.sst_aleg_enabled == "yes" ) {
     call_profile.eval_sst_config(ctx,req,call_profile.sst_a_cfg);
     if(applySSTCfg(call_profile.sst_a_cfg,&req) < 0) {
       throw AmSession::Exception(500, SIP_REPLY_SERVER_INTERNAL_ERROR);

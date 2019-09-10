@@ -23,17 +23,17 @@ const char* AmBasicSipDialog::status2str[AmBasicSipDialog::__max_Status] = {
 
 AmBasicSipDialog::AmBasicSipDialog(AmBasicSipEventHandler* h)
   : status(Disconnected),
-    cseq(10),r_cseq_i(false),hdl(h),
+    next_hop(AmConfig::NextHop),next_hop_1st_req(AmConfig::NextHop1stReq),patch_ruri_next_hop(false),
+    next_hop_fixed(false),
+    outbound_interface(-1),
+    usages(0),
+    hdl(h),
     logger(0),
     outbound_proxy(AmConfig::OutboundProxy),
     force_outbound_proxy(AmConfig::ForceOutboundProxy),
-    next_hop(AmConfig::NextHop),
-    next_hop_1st_req(AmConfig::NextHop1stReq),
-    patch_ruri_next_hop(false),
-    next_hop_fixed(false),
-    outbound_interface(-1),
     nat_handling(AmConfig::SipNATHandling),
-    usages(0)
+    cseq(10),
+    r_cseq_i(false)
 {
   //assert(h);
 }
@@ -448,14 +448,14 @@ bool AmBasicSipDialog::onRxReplySanity(const AmSipReply& reply)
 {
   if(ext_local_tag.empty()) {
     if(reply.from_tag != local_tag) {
-      ERROR("received reply with wrong From-tag ('%s' vs. '%s')",
+      ERROR("received reply with wrong From-tag ('%s' vs. '%s')\n",
 	    reply.from_tag.c_str(), local_tag.c_str());
       throw string("reply has wrong from-tag");
       //return;
     }
   }
   else if(reply.from_tag != ext_local_tag) {
-    ERROR("received reply with wrong From-tag ('%s' vs. '%s')",
+    ERROR("received reply with wrong From-tag ('%s' vs. '%s')\n",
 	  reply.from_tag.c_str(), ext_local_tag.c_str());
     throw string("reply has wrong from-tag");
     //return;
@@ -466,8 +466,11 @@ bool AmBasicSipDialog::onRxReplySanity(const AmSipReply& reply)
 
 void AmBasicSipDialog::onRxReply(const AmSipReply& reply)
 {
-  if(!onRxReplySanity(reply))
+  if(!onRxReplySanity(reply)) {
+    DBG("onRxReply (rep = %u %s): sanity check failed!\n",
+	reply.code, reply.reason.c_str());
     return;
+  }
 
   TransMap::iterator t_it = uac_trans.find(reply.cseq);
   if(t_it == uac_trans.end()){
