@@ -14,7 +14,7 @@ PROJECT (SEMS)
 
 SET(SEMS_MAJOR_VERSION 1)
 SET(SEMS_MINOR_VERSION 7)
-SET(SEMS_BUILD_VERSION 0)
+SET(SEMS_BUILD_VERSION 1)
 SET(SEMS_EXTRA_VERSION dev)
 
 IF(EXISTS ${CMAKE_SOURCE_DIR}/.git)
@@ -33,15 +33,6 @@ ADD_DEFINITIONS(-DSYSTEM_SAMPLECLOCK_RATE=32000LL)
 ADD_DEFINITIONS(-DSEMS_APP_NAME=\\\"sems\\\")
 
 MESSAGE(STATUS "Configuring ${CMAKE_PROJECT_NAME} v. ${SEMS_VERSION}")
-
-IF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
-	message(FATAL_ERROR "In-source builds are not allowed.
-CMake would overwrite all makefiles distributed with SEMS.
-Please create a directory and run cmake from there, passing the path
-to this source directory as the last argument.
-This process created the file `CMakeCache.txt' and the directory `CMakeFiles'.
-Please delete them.")
-ENDIF(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
 
 OPTION(SEMS_USE_SPANDSP       "Build with spandsp" OFF)
 OPTION(SEMS_USE_LIBSAMPLERATE "Build with libsamplerate" OFF)
@@ -71,7 +62,7 @@ ELSE(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
 ENDIF(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
 
 IF (NOT SEMS_CFG_PREFIX)
-	SET(SEMS_CFG_PREFIX "/usr/local")
+	SET(SEMS_CFG_PREFIX "")
 ENDIF (NOT SEMS_CFG_PREFIX)
 MESSAGE(STATUS "SEMS cfg prefix was set to: ${SEMS_CFG_PREFIX}")
 

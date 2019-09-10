@@ -22,8 +22,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
@@ -39,7 +39,7 @@ int copy_hdrs_len(const list<sip_header*>& hdrs)
     for(;it != hdrs.end(); ++it){
 	ret += copy_hdr_len(*it);
     }
-    
+
     return ret;
 }
 
@@ -55,7 +55,7 @@ int  copy_hdrs_len_no_via(const list<sip_header*>& hdrs)
 
 	ret += copy_hdr_len(*it);
     }
-    
+
     return ret;
 }
 
@@ -69,6 +69,7 @@ int  copy_hdrs_len_no_via_contact(const list<sip_header*>& hdrs)
       switch((*it)->type) {
       case sip_header::H_VIA:
       case sip_header::H_CONTACT:
+      case sip_header::H_CONTENT_LENGTH:
 	continue;
 
       default:
@@ -76,7 +77,7 @@ int  copy_hdrs_len_no_via_contact(const list<sip_header*>& hdrs)
 	break;
       }
     }
-    
+
     return ret;
 }
 
@@ -107,6 +108,7 @@ void copy_hdrs_wr_no_via_contact(char** c, const list<sip_header*>& hdrs)
       switch((*it)->type) {
       case sip_header::H_VIA:
       case sip_header::H_CONTACT:
+      case sip_header::H_CONTENT_LENGTH:
 	continue;
 
       default:
