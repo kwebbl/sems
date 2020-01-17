@@ -188,6 +188,8 @@ bool AmUriParser::parse_uri() {
   if (uri.empty())
     return false;
 
+  pos = skip_name(uri, 0);
+
   while (pos<uri.length()) {
     char c = uri[pos];
     //    DBG("(1) c = %c, st = %d\n", c, st);
