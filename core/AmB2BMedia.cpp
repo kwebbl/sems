@@ -853,21 +853,6 @@ void AmB2BMedia::replaceConnectionAddress(AmSdp &parser_sdp, bool a_leg,
   DBG("replaced connection address in SDP with %s:%s.\n",
       relay_public_address.c_str(), replaced_ports.c_str());
 }
-      
-static const char* 
-_rtp_relay_mode_str(const AmB2BSession::RTPRelayMode& relay_mode)
-{
-  switch(relay_mode){
-  case AmB2BSession::RTP_Direct:
-    return "RTP_Direct";
-  case AmB2BSession::RTP_Relay:
-    return "RTP_Relay";
-  case AmB2BSession::RTP_Transcoding:
-    return "RTP_Transcoding";
-  }
-
-  return "";
-}
 
 void AmB2BMedia::updateStreamPair(AudioStreamPair &pair)
 {
@@ -1006,7 +991,10 @@ void AmB2BMedia::updateStreams(bool a_leg, const AmSdp &local_sdp, const AmSdp &
 
   AudioStreamIterator astream = audio.begin();
   RelayStreamIterator rstream = relay_streams.begin();
+  int local_media_count = std::distance(local_sdp.media.begin(),
+					local_sdp.media.end());
   for (vector<SdpMedia>::const_iterator m = remote_sdp.media.begin(); m != remote_sdp.media.end(); ++m) {
+    if (local_media_count == 0) break;
     const string& connection_address = (m->conn.address.empty() ? remote_sdp.conn.address : m->conn.address);
 
     if (m->type == MT_AUDIO) {
@@ -1039,6 +1027,8 @@ void AmB2BMedia::updateStreams(bool a_leg, const AmSdp &local_sdp, const AmSdp &
       }
       ++rstream;
     }
+
+    local_media_count--;
   }
 
   updateAudioStreams();

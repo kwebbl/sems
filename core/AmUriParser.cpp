@@ -49,21 +49,17 @@ bool AmUriParser::isEqual(const AmUriParser& c) const {
 static inline int skip_name(const string& s, unsigned int pos)
 {
   size_t i;
-  int last_wsp, quoted = 0;
+  int quoted = 0;
 	
   for(i = pos; i < s.length(); i++) {
     char c = s[i];
     if (!quoted) {
-      if ((c == ' ') || (c == '\t')) {
-	last_wsp = i;
-      } else {
-	if (c == '<') {
-	  return i;
-	}
+      if (c == '<') {
+	return i;
+      }
 
-	if (c == '\"') {
-	  quoted = 1;
-	}
+      if (c == '\"') {
+	quoted = 1;
       }
     } else {
       if ((c == '\"') && (s[i-1] != '\\')) quoted = 0;
@@ -180,13 +176,15 @@ enum {
  */
 bool AmUriParser::parse_uri() {
   // assuming user@host
-  size_t pos = 0; int st = uS0;
+  size_t pos; int st = uS0;
   size_t p1 = 0; 
   int eq = 0; const char* sip_prot = "SIP:";
   uri_user = ""; uri_host = ""; uri_port = ""; uri_param = "";
 
   if (uri.empty())
     return false;
+
+  pos = skip_name(uri, 0);
 
   while (pos<uri.length()) {
     char c = uri[pos];

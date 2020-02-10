@@ -943,7 +943,7 @@ bool AmSession::getSdpAnswer(const AmSdp& offer, AmSdp& answer)
 	  (answer_media.payloads[0].encoding_name == "telephone-event"))
 	 ){
 	// no compatible media found
-	throw Exception(488,"no compatible payload");
+	throw Exception(488, SIP_REPLY_NOT_ACCEPTABLE_HERE);
       }
       audio_1st_stream = false;
     }
@@ -971,6 +971,9 @@ bool AmSession::getSdpAnswer(const AmSdp& offer, AmSdp& answer)
     media_index++;
   }
 
+  if (audio_1st_stream)
+    throw Exception(488, SIP_REPLY_NOT_ACCEPTABLE_HERE);
+
   return true;
 }
 
@@ -994,13 +997,6 @@ int AmSession::onSdpCompleted(const AmSdp& local_sdp, const AmSdp& remote_sdp)
 	  : debug_str.c_str());
 
     return -1;
-  }
-
-  bool set_on_hold = false;
-  if (!remote_sdp.media.empty()) {
-    vector<SdpAttribute>::const_iterator pos =
-      std::find(remote_sdp.media[0].attributes.begin(), remote_sdp.media[0].attributes.end(), SdpAttribute("sendonly"));
-    set_on_hold = pos != remote_sdp.media[0].attributes.end();
   }
 
   lockAudio();
