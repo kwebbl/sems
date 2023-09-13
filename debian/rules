@@ -11,7 +11,7 @@ EXCLUDED_MODULES=gateway examples mp3 twit ivr conf_auth mailbox pin_collect
 EXCLUDED_DSM_MODULES=mod_aws
 EXCLUDED_DSM_PY_MODULES=mod_aws mod_py
 
-CPPFLAGS += -DHAVE_XMLRPCPP_SSL
+CPPFLAGS += -DHAVE_XMLRPCPP_SSL -Wno-deprecated
 
 export USE_SPANDSP=yes LONG_DEBUG_MESSAGE=yes CPPFLAGS="$(CPPFLAGS)"
 
