@@ -17,8 +17,7 @@ Build-Depends: debhelper (>= 9~),
                libssl-dev,
                libxml2-dev,
                libbcg729-dev (>= 1.1.1),
-               openssl,
-               python-dev
+               openssl
 Standards-Version: 3.9.5
 
 Package: sems
