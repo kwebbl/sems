@@ -14,7 +14,7 @@ SEMS_USER="sems"
 # group to run SEMS as
 SEMS_GROUP="sems"
 
-SEMS_RUNDIR="/var/run/sems"
+SEMS_RUNDIR="/run/sems"
 
 # sems pidfile
 SEMS_PIDFILE="$SEMS_RUNDIR/sems.pid"

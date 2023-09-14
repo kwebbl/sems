@@ -17,7 +17,7 @@ esac
 
 # add sems user
 adduser --quiet --system --group --disabled-password --shell /bin/false \
---gecos "SIP Express Media Server" --home /var/run/sems sems || true
+--gecos "SIP Express Media Server" --home /run/sems sems || true
 
 #DEBHELPER#
 
