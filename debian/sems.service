@@ -6,12 +6,10 @@ After=network.target
 Type=simple
 User=sems
 Group=sems
-EnvironmentFile=-/etc/sysconfig/sems
+Environment='CFGFILE=/etc/sems/sems.conf'
+EnvironmentFile=-/etc/default/sems
 PIDFile=/run/sems/sems.pid
-Restart=always
+Restart=on-failure
 StartLimitInterval=10
 StartLimitBurst=5
-ExecStart=/usr/sbin/sems -E -u sems -g sems -P /run/sems/sems.pid $OPTIONS
-
-[Install]
-WantedBy=multi-user.target
+ExecStart=/usr/sbin/sems -E -u sems -g sems -P $PIDFile -f $CFGFILE
